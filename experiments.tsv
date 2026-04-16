@@ -1,0 +1,2 @@
+timestamp	commit	metric	value	status	description
+2026-04-16T19:05	init	test_count	12	keep	baseline + explain() feature: 8→12 tests, routing explainability added

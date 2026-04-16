@@ -191,6 +191,18 @@ class PromptRouter:
             "agents": details,
         }
 
+    def route_with_confidence(self, prompt: str, threshold: float = 0.5) -> tuple[Optional[str], float, str]:
+        """Route with confidence check. Returns (agent, score, status).
+        status is 'confident', 'low_confidence', or 'no_match'.
+        Returns None agent when below threshold.
+        """
+        agent, score, _ = self.route(prompt)
+        if score == 0.0:
+            return None, 0.0, "no_match"
+        if score < threshold:
+            return agent, score, "low_confidence"
+        return agent, score, "confident"
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

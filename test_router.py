@@ -66,6 +66,36 @@ print("  ✅ explain() handles unknown prompts with fallback")
 explain_tests_passed += 1
 
 print(f"\n{explain_tests_passed}/{explain_tests_total} explain tests passed")
-total_passed = passed + explain_tests_passed
-total_tests = len(tests) + explain_tests_total
+
+# --- route_with_confidence() tests ---
+conf_tests_passed = 0
+conf_tests_total = 0
+
+# Test 1: high-confidence prompt returns confident
+conf_tests_total += 1
+agent, score, status = router.route_with_confidence("Fix the authentication bug in login.py")
+assert status == "confident", f"expected confident, got {status}"
+assert agent == "coder"
+print("  ✅ route_with_confidence: clear prompt → confident")
+conf_tests_passed += 1
+
+# Test 2: gibberish returns no_match
+conf_tests_total += 1
+agent, score, status = router.route_with_confidence("xyzzy plugh")
+assert status == "no_match", f"expected no_match, got {status}"
+assert agent is None
+print("  ✅ route_with_confidence: gibberish → no_match")
+conf_tests_passed += 1
+
+# Test 3: custom threshold works
+conf_tests_total += 1
+agent, score, status = router.route_with_confidence("Fix the authentication bug in login.py", threshold=999.0)
+assert status == "low_confidence", f"expected low_confidence, got {status}"
+print("  ✅ route_with_confidence: high threshold → low_confidence")
+conf_tests_passed += 1
+
+print(f"\n{conf_tests_passed}/{conf_tests_total} confidence tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
