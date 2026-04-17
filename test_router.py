@@ -96,6 +96,49 @@ conf_tests_passed += 1
 
 print(f"\n{conf_tests_passed}/{conf_tests_total} confidence tests passed")
 
-total_passed = passed + explain_tests_passed + conf_tests_passed
-total_tests = len(tests) + explain_tests_total + conf_tests_total
+# --- route_batch() tests ---
+batch_passed = 0
+batch_total = 0
+
+# Test 1: basic batch routing
+batch_total += 1
+prompts = [
+    "Fix the login bug",
+    "Summarize the Q4 report",
+    "Write a blog post about AI",
+]
+batch_result = router.route_batch(prompts)
+assert "results" in batch_result and "stats" in batch_result
+assert len(batch_result["results"]) == 3
+assert batch_result["stats"]["total"] == 3
+print("  ✅ route_batch: returns results + stats for 3 prompts")
+batch_passed += 1
+
+# Test 2: distribution is correct
+batch_total += 1
+dist = batch_result["stats"]["distribution"]
+assert "coder" in dist, "coder should be in distribution"
+assert sum(dist.values()) == 3, "distribution should sum to total"
+print("  ✅ route_batch: distribution sums to total")
+batch_passed += 1
+
+# Test 3: empty batch
+batch_total += 1
+empty = router.route_batch([])
+assert empty["stats"]["total"] == 0
+assert empty["stats"]["avg_score"] == 0
+print("  ✅ route_batch: handles empty list")
+batch_passed += 1
+
+# Test 4: status_counts populated
+batch_total += 1
+sc = batch_result["stats"]["status_counts"]
+assert "confident" in sc or "no_match" in sc, "status_counts should have entries"
+print("  ✅ route_batch: status_counts populated")
+batch_passed += 1
+
+print(f"\n{batch_passed}/{batch_total} batch tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")

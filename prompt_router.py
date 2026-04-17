@@ -203,6 +203,41 @@ class PromptRouter:
             return agent, score, "low_confidence"
         return agent, score, "confident"
 
+    def route_batch(self, prompts: list[str]) -> dict:
+        """Route multiple prompts and return results + aggregate stats.
+        Returns dict with 'results' list and 'stats' summary.
+        """
+        results = []
+        for p in prompts:
+            agent, score, all_scores = self.route(p)
+            _, conf_score, status = self.route_with_confidence(p)
+            results.append({
+                "prompt": p,
+                "agent": agent,
+                "score": round(score, 4),
+                "status": status,
+            })
+
+        # Aggregate stats
+        distribution = {}
+        status_counts = {}
+        scores = []
+        for r in results:
+            distribution[r["agent"]] = distribution.get(r["agent"], 0) + 1
+            status_counts[r["status"]] = status_counts.get(r["status"], 0) + 1
+            scores.append(r["score"])
+
+        stats = {
+            "total": len(prompts),
+            "distribution": distribution,
+            "status_counts": status_counts,
+            "avg_score": round(sum(scores) / len(scores), 4) if scores else 0,
+            "max_score": round(max(scores), 4) if scores else 0,
+            "min_score": round(min(scores), 4) if scores else 0,
+        }
+
+        return {"results": results, "stats": stats}
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""
