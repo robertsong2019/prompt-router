@@ -238,6 +238,35 @@ class PromptRouter:
 
         return {"results": results, "stats": stats}
 
+    def route_with_fallback(self, prompt: str, threshold: float = 0.5) -> dict:
+        """Route with fallback chain: try agents in score order until one exceeds threshold.
+        Returns dict with 'agent', 'score', 'fallback_used', 'chain'.
+        """
+        scores = [(a.name, a.score(prompt)) for a in self.agents]
+        scores.sort(key=lambda x: x[1], reverse=True)
+
+        chain = []
+        for name, score in scores:
+            chain.append({"agent": name, "score": round(score, 4)})
+            if score >= threshold:
+                return {
+                    "agent": name,
+                    "score": round(score, 4),
+                    "fallback_used": len(chain) > 1,
+                    "chain": chain,
+                }
+
+        # Nothing met threshold — return best available
+        if scores:
+            return {
+                "agent": scores[0][0],
+                "score": round(scores[0][1], 4),
+                "fallback_used": True,
+                "chain": chain,
+            }
+
+        return {"agent": None, "score": 0.0, "fallback_used": False, "chain": []}
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

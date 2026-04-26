@@ -1,3 +1,5 @@
 timestamp	commit	metric	value	status	description
 2026-04-16T19:05	init	test_count	12	keep	baseline + explain() feature: 8→12 tests, routing explainability added
 2026-04-16T19:15	HEAD	test_count	15	keep	add route_with_confidence(): threshold-based routing, 3 new tests
+2026-04-17T19:10	3e2a4c9	test_count	19	keep	add route_batch() with aggregate stats: 15→19 tests
+2026-04-26T19:15	-	test_count	22	keep	add route_with_fallback(): fallback chain with threshold, 3 new tests

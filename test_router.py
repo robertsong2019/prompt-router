@@ -139,6 +139,37 @@ batch_passed += 1
 
 print(f"\n{batch_passed}/{batch_total} batch tests passed")
 
-total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed
-total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total
+# --- route_with_fallback() tests ---
+fb_passed = 0
+fb_total = 0
+
+# Test 1: high-confidence → no fallback needed
+fb_total += 1
+result = router.route_with_fallback("Fix the authentication bug in login.py")
+assert result["agent"] == "coder", f"expected coder, got {result['agent']}"
+assert result["fallback_used"] is False
+assert len(result["chain"]) == 1
+print("  ✅ route_with_fallback: high-confidence → primary agent, no fallback")
+fb_passed += 1
+
+# Test 2: chain contains scored agents and is sorted
+fb_total += 1
+result = router.route_with_fallback("Plan the architecture for a new system", threshold=999.0)
+assert len(result["chain"]) == len(router.agents), f"chain should have all {len(router.agents)} agents"
+assert result["chain"][0]["score"] >= result["chain"][-1]["score"]
+print("  ✅ route_with_fallback: chain sorted by score descending")
+fb_passed += 1
+
+# Test 3: very high threshold forces fallback to best available
+fb_total += 1
+result = router.route_with_fallback("Fix the login bug", threshold=999.0)
+assert result["fallback_used"] is True
+assert result["agent"] is not None
+print("  ✅ route_with_fallback: unmeetable threshold → fallback to best")
+fb_passed += 1
+
+print(f"\n{fb_passed}/{fb_total} fallback tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
