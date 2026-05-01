@@ -3,3 +3,6 @@ timestamp	commit	metric	value	status	description
 2026-04-16T19:15	HEAD	test_count	15	keep	add route_with_confidence(): threshold-based routing, 3 new tests
 2026-04-17T19:10	3e2a4c9	test_count	19	keep	add route_batch() with aggregate stats: 15→19 tests
 2026-04-26T19:15	-	test_count	22	keep	add route_with_fallback(): fallback chain with threshold, 3 new tests
+2026-05-01T21:00	3de98b9	test_count	22→27	keep	add_agent/remove_agent/list_agents: dynamic agent management, 5 new tests
+2026-05-01T21:05	8946e7e	test_count	27→30	keep	save_config/load_config: JSON persistence for agent configs, 3 new tests
+2026-05-01T21:10	5bfeb6b	test_count	30→34	keep	route_top_k(k): top-K agent selection with explanations, 4 new tests
