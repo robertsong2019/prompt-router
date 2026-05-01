@@ -263,6 +263,43 @@ config_passed += 1
 os.unlink(tmpf)
 print(f"\n{config_passed}/{config_total} config tests passed")
 
-total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed
-total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total
+# --- route_top_k tests ---
+topk_passed = 0
+topk_total = 0
+
+# Test 1: returns k results
+topk_total += 1
+results = router.route_top_k("Fix the login bug", k=3)
+assert len(results) == 3
+assert results[0]["agent"] == "coder"
+print("  ✅ route_top_k: returns top 3 agents, coder first")
+topk_passed += 1
+
+# Test 2: k larger than agents returns all
+topk_total += 1
+big = router.route_top_k("test", k=100)
+assert len(big) == len(router.agents)
+print("  ✅ route_top_k: k > agents returns all agents")
+topk_passed += 1
+
+# Test 3: each result has reasons
+topk_total += 1
+top3 = router.route_top_k("Summarize the revenue report", k=2)
+assert all("reasons" in r for r in top3)
+assert len(top3[0]["reasons"]) > 0, "top result should have reasons"
+print("  ✅ route_top_k: results include reasons")
+topk_passed += 1
+
+# Test 4: sorted descending by score
+topk_total += 1
+top = router.route_top_k("Deploy to kubernetes", k=5)
+scores = [r["score"] for r in top]
+assert scores == sorted(scores, reverse=True)
+print("  ✅ route_top_k: sorted descending by score")
+topk_passed += 1
+
+print(f"\n{topk_passed}/{topk_total} top_k tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed + topk_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total + topk_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")

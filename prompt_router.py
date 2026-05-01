@@ -287,6 +287,17 @@ class PromptRouter:
                  "keywords": len(a.keywords), "priority": a.priority}
                 for a in self.agents]
 
+    def route_top_k(self, prompt: str, k: int = 3) -> list[dict]:
+        """Return top-K agent matches with scores and explanations.
+        Useful for multi-agent delegation or ensemble routing.
+        """
+        scores = []
+        for a in self.agents:
+            s, reasons = a.score(prompt, detail=True)
+            scores.append({"agent": a.name, "score": round(s, 4), "reasons": reasons})
+        scores.sort(key=lambda x: x["score"], reverse=True)
+        return scores[:k]
+
     def save_config(self, path: str) -> None:
         """Save current agent config to JSON file."""
         data = [{"name": a.name, "description": a.description,
