@@ -221,6 +221,48 @@ agent_mgmt_passed += 1
 
 print(f"\n{agent_mgmt_passed}/{agent_mgmt_total} agent management tests passed")
 
-total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed
-total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total
+# --- save_config / load_config tests ---
+import os, tempfile
+config_passed = 0
+config_total = 0
+
+# Test 1: save+load round-trip preserves agents
+config_total += 1
+r = PromptRouter()
+tmpf = os.path.join(tempfile.gettempdir(), "test_router_config.json")
+r.save_config(tmpf)
+r2 = PromptRouter([Agent("x", "y")])  # empty-ish
+assert len(r2.agents) == 1
+r2.load_config(tmpf)
+assert len(r2.agents) == len(r.agents)
+assert r2.agents[0].name == r.agents[0].name
+print("  ✅ save_config/load_config: round-trip preserves agents")
+config_passed += 1
+
+# Test 2: loaded config routes identically
+config_total += 1
+prompt = "Fix the login bug"
+a1, s1, _ = r.route(prompt)
+a2, s2, _ = r2.route(prompt)
+assert a1 == a2 and abs(s1 - s2) < 0.001, f"{a1}/{s1} vs {a2}/{s2}"
+print("  ✅ load_config: loaded router routes identically")
+config_passed += 1
+
+# Test 3: custom agent survives round-trip
+config_total += 1
+custom_r = PromptRouter()
+custom_r.add_agent(Agent("custom", "test", keywords=["flibble"]))
+custom_r.save_config(tmpf)
+custom_r2 = PromptRouter()
+custom_r2.load_config(tmpf)
+agent, score, _ = custom_r2.route("flibble the thing")
+assert agent == "custom", f"expected custom, got {agent}"
+print("  ✅ save/load: custom agent survives round-trip")
+config_passed += 1
+
+os.unlink(tmpf)
+print(f"\n{config_passed}/{config_total} config tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")

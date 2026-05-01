@@ -287,6 +287,23 @@ class PromptRouter:
                  "keywords": len(a.keywords), "priority": a.priority}
                 for a in self.agents]
 
+    def save_config(self, path: str) -> None:
+        """Save current agent config to JSON file."""
+        data = [{"name": a.name, "description": a.description,
+                 "keywords": a.keywords, "patterns": a.patterns,
+                 "priority": a.priority} for a in self.agents]
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def load_config(self, path: str) -> None:
+        """Load agent config from JSON file, replacing current agents."""
+        with open(path) as f:
+            data = json.load(f)
+        self.agents = [Agent(name=d["name"], description=d["description"],
+                             keywords=d.get("keywords", []),
+                             patterns=d.get("patterns", []),
+                             priority=d.get("priority", 1.0)) for d in data]
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""
