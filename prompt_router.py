@@ -267,6 +267,26 @@ class PromptRouter:
 
         return {"agent": None, "score": 0.0, "fallback_used": False, "chain": []}
 
+    def add_agent(self, agent: Agent) -> None:
+        """Add a custom agent to the router. No-op if name already exists."""
+        if any(a.name == agent.name for a in self.agents):
+            return
+        self.agents.append(agent)
+
+    def remove_agent(self, name: str) -> bool:
+        """Remove an agent by name. Returns True if found and removed."""
+        for i, a in enumerate(self.agents):
+            if a.name == name:
+                self.agents.pop(i)
+                return True
+        return False
+
+    def list_agents(self) -> list[dict]:
+        """Return summary of all registered agents."""
+        return [{"name": a.name, "description": a.description,
+                 "keywords": len(a.keywords), "priority": a.priority}
+                for a in self.agents]
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

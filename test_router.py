@@ -170,6 +170,57 @@ fb_passed += 1
 
 print(f"\n{fb_passed}/{fb_total} fallback tests passed")
 
-total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed
-total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total
+# --- add_agent / remove_agent / list_agents tests ---
+agent_mgmt_passed = 0
+agent_mgmt_total = 0
+
+# Test 1: add_agent adds and routes to new agent
+agent_mgmt_total += 1
+custom = PromptRouter()
+from prompt_router import Agent
+custom.add_agent(Agent("devops", "Deploy and manage infrastructure",
+                        keywords=["deploy", "kubernetes", "docker", "ci/cd", "infrastructure"]))
+agent, score, _ = custom.route("Deploy the new docker container to kubernetes")
+assert agent == "devops", f"expected devops, got {agent}"
+assert score > 0
+print("  ✅ add_agent: new agent routes correctly")
+agent_mgmt_passed += 1
+
+# Test 2: add_agent no-op on duplicate name
+agent_mgmt_total += 1
+count_before = len(custom.agents)
+custom.add_agent(Agent("devops", "duplicate", keywords=["x"]))
+assert len(custom.agents) == count_before, "duplicate should be ignored"
+print("  ✅ add_agent: duplicate name ignored")
+agent_mgmt_passed += 1
+
+# Test 3: remove_agent works
+agent_mgmt_total += 1
+custom2 = PromptRouter()
+orig_count = len(custom2.agents)
+removed = custom2.remove_agent("writer")
+assert removed is True
+assert len(custom2.agents) == orig_count - 1
+assert all(a.name != "writer" for a in custom2.agents)
+print("  ✅ remove_agent: removes agent and returns True")
+agent_mgmt_passed += 1
+
+# Test 4: remove_agent returns False for missing name
+agent_mgmt_total += 1
+assert custom2.remove_agent("nonexistent") is False
+print("  ✅ remove_agent: returns False for missing agent")
+agent_mgmt_passed += 1
+
+# Test 5: list_agents returns summaries
+agent_mgmt_total += 1
+listing = router.list_agents()
+assert isinstance(listing, list) and len(listing) >= 6
+assert all("name" in item and "keywords" in item for item in listing)
+print("  ✅ list_agents: returns structured summaries")
+agent_mgmt_passed += 1
+
+print(f"\n{agent_mgmt_passed}/{agent_mgmt_total} agent management tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
