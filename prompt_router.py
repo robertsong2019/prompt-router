@@ -153,7 +153,7 @@ class PromptRouter:
     """Routes prompts to the best-matching agent."""
 
     def __init__(self, agents: Optional[list[Agent]] = None):
-        self.agents = agents if agents is not None else DEFAULT_AGENTS
+        self.agents = list(agents) if agents is not None else list(DEFAULT_AGENTS)
 
     def route(self, prompt: str) -> tuple[str, float, list[tuple[str, float]]]:
         """
@@ -396,6 +396,21 @@ class PromptRouter:
                              keywords=d.get("keywords", []),
                              patterns=d.get("patterns", []),
                              priority=d.get("priority", 1.0)) for d in data]
+
+    def route_by_tags(self, prompt: str, tags: list[str]) -> tuple[Optional[str], float, list[tuple[str, float]]]:
+        """Route only to agents whose name or description matches any of the given tags.
+        Useful for domain-scoped routing (e.g. only route to code-related agents).
+        Returns (agent, score, filtered_scores). Agent is None if no tag matches.
+        """
+        tags_lower = {t.lower() for t in tags}
+        filtered = [a for a in self.agents
+                    if a.name.lower() in tags_lower
+                    or any(t in a.description.lower() for t in tags_lower)]
+        if not filtered:
+            return None, 0.0, []
+        scores = [(a.name, a.score(prompt)) for a in filtered]
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return scores[0][0] if scores[0][1] > 0 else None, scores[0][1], scores
 
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""

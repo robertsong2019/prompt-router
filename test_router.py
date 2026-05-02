@@ -448,5 +448,52 @@ adaptive_passed += 1
 print(f"\n{adaptive_passed}/{adaptive_total} adaptive tests passed")
 
 total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed + topk_passed + ens_passed + merge_passed + adaptive_passed
+
 total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total + topk_total + ens_total + merge_total + adaptive_total
+
+# --- route_by_tags tests ---
+tag_total = 6
+tag_passed = 0
+
+# 1. filter by agent name tag
+agent, score, _ = PromptRouter().route_by_tags("Fix the bug", ["coder"])
+assert agent == "coder", f"expected coder, got {agent}"
+print("  ✅ route_by_tags: filter by agent name")
+tag_passed += 1
+
+# 2. filter by description tag
+agent, score, _ = PromptRouter().route_by_tags("Write a poem", ["content", "documentation"])
+assert agent is not None, "should match writer via description tag"
+print("  ✅ route_by_tags: filter by description tag")
+tag_passed += 1
+
+# 3. no matching tags returns None
+agent, score, _ = PromptRouter().route_by_tags("Fix the bug", ["nonexistent"])
+assert agent is None, f"expected None, got {agent}"
+assert score == 0.0
+print("  ✅ route_by_tags: no matching tags → None")
+tag_passed += 1
+
+# 4. multiple tags (union)
+agent, score, _ = PromptRouter().route_by_tags("Debug the server", ["coder", "researcher"])
+assert agent == "coder"
+print("  ✅ route_by_tags: multiple tags union")
+tag_passed += 1
+
+# 5. tag match but no keyword match → None
+agent, score, _ = PromptRouter().route_by_tags("zzzzzz unknown", ["coder"])
+assert agent is None, "coder tag matched but no keywords → None"
+print("  ✅ route_by_tags: tag matched but no keyword match → None")
+tag_passed += 1
+
+# 6. case insensitive tags
+agent, score, _ = PromptRouter().route_by_tags("Plan the project", ["PLANNER"])
+assert agent == "planner"
+print("  ✅ route_by_tags: case insensitive")
+tag_passed += 1
+
+print(f"\n{tag_passed}/{tag_total} route_by_tags tests passed")
+
+total_passed += tag_passed
+total_tests += tag_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
