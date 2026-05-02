@@ -153,7 +153,7 @@ class PromptRouter:
     """Routes prompts to the best-matching agent."""
 
     def __init__(self, agents: Optional[list[Agent]] = None):
-        self.agents = agents or DEFAULT_AGENTS
+        self.agents = agents if agents is not None else DEFAULT_AGENTS
 
     def route(self, prompt: str) -> tuple[str, float, list[tuple[str, float]]]:
         """
@@ -297,6 +297,54 @@ class PromptRouter:
             scores.append({"agent": a.name, "score": round(s, 4), "reasons": reasons})
         scores.sort(key=lambda x: x["score"], reverse=True)
         return scores[:k]
+
+    def route_ensemble(self, prompt: str, k: int = 3, weights: Optional[dict[str, float]] = None) -> dict:
+        """Route to multiple agents with weight distribution.
+        Useful for splitting work across agents or building ensemble systems.
+        Returns dict with 'agents' list (name, weight, score, reasons) and 'total_weight'.
+        """
+        scored = []
+        for a in self.agents:
+            s, reasons = a.score(prompt, detail=True)
+            scored.append((a.name, s, reasons))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        top = scored[:k]
+
+        # Apply external weight bias if provided
+        total_raw = sum(s for _, s, _ in top) or 1.0
+        agents_out = []
+        for name, score, reasons in top:
+            base_w = score / total_raw
+            if weights and name in weights:
+                base_w *= weights[name]
+            agents_out.append({
+                "agent": name,
+                "score": round(score, 4),
+                "weight": round(base_w, 4),
+                "reasons": reasons,
+            })
+
+        # Re-normalize weights
+        total_w = sum(a["weight"] for a in agents_out) or 1.0
+        for a in agents_out:
+            a["weight"] = round(a["weight"] / total_w, 4)
+
+        return {"agents": agents_out, "total_weight": round(total_w, 4)}
+
+    @staticmethod
+    def merge_routers(*routers: 'PromptRouter') -> 'PromptRouter':
+        """Merge multiple routers into one. Agents with same name are deduplicated (first wins).
+        """
+        if not routers:
+            return PromptRouter([])
+        seen = set()
+        merged = []
+        for r in routers:
+            for a in r.agents:
+                if a.name not in seen:
+                    seen.add(a.name)
+                    merged.append(a)
+        return PromptRouter(merged)
 
     def save_config(self, path: str) -> None:
         """Save current agent config to JSON file."""

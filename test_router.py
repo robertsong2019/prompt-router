@@ -302,4 +302,92 @@ print(f"\n{topk_passed}/{topk_total} top_k tests passed")
 
 total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed + topk_passed
 total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total + topk_total
+# --- route_ensemble tests ---
+ens_passed = 0
+ens_total = 0
+
+# Test 1: returns k agents with weights
+ens_total += 1
+result = router.route_ensemble("Fix the login bug", k=3)
+assert "agents" in result and "total_weight" in result
+assert len(result["agents"]) == 3
+assert result["agents"][0]["agent"] == "coder"
+assert all("weight" in a for a in result["agents"])
+print("  ✅ route_ensemble: returns 3 agents with weights, coder first")
+ens_passed += 1
+
+# Test 2: weights sum to ~1.0
+ens_total += 1
+wsum = sum(a["weight"] for a in result["agents"])
+assert abs(wsum - 1.0) < 0.01, f"weights should sum to ~1.0, got {wsum}"
+print("  ✅ route_ensemble: weights sum to ~1.0")
+ens_passed += 1
+
+# Test 3: custom weights bias results
+ens_total += 1
+biased = router.route_ensemble("Fix the login bug", k=3, weights={"coder": 2.0, "researcher": 0.5})
+coder_w = next(a["weight"] for a in biased["agents"] if a["agent"] == "coder")
+researcher_w = next((a["weight"] for a in biased["agents"] if a["agent"] == "researcher"), 0)
+assert coder_w > researcher_w, "coder should have higher weight with bias"
+print("  ✅ route_ensemble: custom weights bias distribution")
+ens_passed += 1
+
+# Test 4: each agent has reasons
+ens_total += 1
+assert all(len(a["reasons"]) >= 0 for a in result["agents"]), "each agent should have reasons"
+assert len(result["agents"][0]["reasons"]) > 0, "top agent should have reasons"
+print("  ✅ route_ensemble: agents include reasons")
+ens_passed += 1
+
+# Test 5: k=1 returns single agent
+ens_total += 1
+single = router.route_ensemble("Deploy to kubernetes", k=1)
+assert len(single["agents"]) == 1
+assert single["agents"][0]["weight"] == 1.0
+print("  ✅ route_ensemble: k=1 returns single agent with weight 1.0")
+ens_passed += 1
+
+print(f"\n{ens_passed}/{ens_total} ensemble tests passed")
+
+# --- merge_routers tests ---
+merge_passed = 0
+merge_total = 0
+
+# Test 1: merge two routers deduplicates by name
+merge_total += 1
+r1 = PromptRouter([Agent("a", "first", keywords=["x"]), Agent("b", "second", keywords=["y"])])
+r2 = PromptRouter([Agent("b", "duplicate", keywords=["z"]), Agent("c", "third", keywords=["w"])])
+merged = PromptRouter.merge_routers(r1, r2)
+names = [a.name for a in merged.agents]
+assert names == ["a", "b", "c"], f"expected [a,b,c], got {names}"
+assert merged.agents[1].description == "second", "first occurrence wins"
+print("  ✅ merge_routers: deduplicates by name, first wins")
+merge_passed += 1
+
+# Test 2: merged router routes correctly
+merge_total += 1
+agent, score, _ = merged.route("x thing")
+assert agent == "a", f"expected a, got {agent}"
+print("  ✅ merge_routers: merged router routes correctly")
+merge_passed += 1
+
+# Test 3: merge single router returns copy
+merge_total += 1
+single_merged = PromptRouter.merge_routers(r1)
+assert len(single_merged.agents) == len(r1.agents)
+assert single_merged.agents is not r1.agents, "should be new list"
+print("  ✅ merge_routers: single router returns new copy")
+merge_passed += 1
+
+# Test 4: merge empty is valid
+merge_total += 1
+empty_merged = PromptRouter.merge_routers()
+assert len(empty_merged.agents) == 0
+print("  ✅ merge_routers: no routers → empty router")
+merge_passed += 1
+
+print(f"\n{merge_passed}/{merge_total} merge tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed + topk_passed + ens_passed + merge_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total + topk_total + ens_total + merge_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
