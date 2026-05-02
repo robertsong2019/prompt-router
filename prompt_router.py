@@ -346,6 +346,40 @@ class PromptRouter:
                     merged.append(a)
         return PromptRouter(merged)
 
+    def route_adaptive(self, prompt: str, correct_agent: Optional[str] = None) -> dict:
+        """Route with optional feedback. If correct_agent provided, boosts that agent's priority
+        and records feedback. Returns routing result + feedback status.
+        """
+        if not hasattr(self, '_feedback_history'):
+            self._feedback_history = []  # [(prompt_hash, agent, was_correct)]
+
+        agent, score, all_scores = self.route(prompt)
+        result = {"agent": agent, "score": round(score, 4), "feedback": None}
+
+        if correct_agent:
+            was_correct = agent == correct_agent
+            self._feedback_history.append((hash(prompt.lower()), agent, was_correct))
+            result["feedback"] = "correct" if was_correct else "corrected"
+
+            if not was_correct:
+                # Boost correct agent's priority
+                for a in self.agents:
+                    if a.name == correct_agent:
+                        a.priority = min(a.priority + 0.1, 3.0)
+                        break
+                # Slightly reduce wrongly-selected agent
+                for a in self.agents:
+                    if a.name == agent:
+                        a.priority = max(a.priority - 0.05, 0.1)
+                        break
+
+        result["history_size"] = len(self._feedback_history)
+        result["accuracy"] = (
+            sum(1 for _, _, ok in self._feedback_history if ok) / len(self._feedback_history)
+            if self._feedback_history else None
+        )
+        return result
+
     def save_config(self, path: str) -> None:
         """Save current agent config to JSON file."""
         data = [{"name": a.name, "description": a.description,

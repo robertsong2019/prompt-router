@@ -388,6 +388,65 @@ merge_passed += 1
 
 print(f"\n{merge_passed}/{merge_total} merge tests passed")
 
-total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed + topk_passed + ens_passed + merge_passed
-total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total + topk_total + ens_total + merge_total
+# --- route_adaptive tests ---
+adaptive_passed = 0
+adaptive_total = 0
+
+# Test 1: routes correctly without feedback
+adaptive_total += 1
+result = router.route_adaptive("Fix the login bug")
+assert result["agent"] == "coder"
+assert result["feedback"] is None
+assert result["history_size"] == 0
+print("  ✅ route_adaptive: routes without feedback")
+adaptive_passed += 1
+
+# Test 2: correct feedback recorded
+adaptive_total += 1
+r = PromptRouter()  # fresh router
+result = r.route_adaptive("Fix the login bug", correct_agent="coder")
+assert result["feedback"] == "correct"
+assert result["history_size"] == 1
+assert result["accuracy"] == 1.0
+print("  ✅ route_adaptive: correct feedback recorded")
+adaptive_passed += 1
+
+# Test 3: wrong feedback adjusts priorities
+adaptive_total += 1
+r2 = PromptRouter()
+result = r2.route_adaptive("Fix the login bug", correct_agent="researcher")
+assert result["feedback"] == "corrected"
+assert result["accuracy"] == 0.0
+# Check researcher priority boosted
+res_priority = next(a.priority for a in r2.agents if a.name == "researcher")
+coder_priority = next(a.priority for a in r2.agents if a.name == "coder")
+assert res_priority > 1.0, "researcher priority should increase"
+assert coder_priority < 1.0, "coder priority should decrease"
+print("  ✅ route_adaptive: wrong feedback adjusts priorities")
+adaptive_passed += 1
+
+# Test 4: accuracy tracks over multiple calls
+adaptive_total += 1
+r3 = PromptRouter()
+r3.route_adaptive("Fix bug", correct_agent="coder")  # correct (coder routes coder)
+r3.route_adaptive("Write blog", correct_agent="researcher")  # wrong (writer routes, not researcher)
+last = r3.route_adaptive("Summarize data", correct_agent="researcher")  # likely correct
+assert last["history_size"] == 3
+assert last["accuracy"] is not None and 0 < last["accuracy"] <= 1.0
+print("  ✅ route_adaptive: accuracy tracks over multiple calls")
+adaptive_passed += 1
+
+# Test 5: history_size without feedback stays same
+adaptive_total += 1
+r4 = PromptRouter()
+r4.route_adaptive("Fix", correct_agent="coder")
+s1 = r4.route_adaptive("Test")["history_size"]
+assert s1 == 1, "no feedback should not add to history"
+print("  ✅ route_adaptive: no feedback = no history entry")
+adaptive_passed += 1
+
+print(f"\n{adaptive_passed}/{adaptive_total} adaptive tests passed")
+
+total_passed = passed + explain_tests_passed + conf_tests_passed + batch_passed + fb_passed + agent_mgmt_passed + config_passed + topk_passed + ens_passed + merge_passed + adaptive_passed
+total_tests = len(tests) + explain_tests_total + conf_tests_total + batch_total + fb_total + agent_mgmt_total + config_total + topk_total + ens_total + merge_total + adaptive_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
