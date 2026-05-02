@@ -546,4 +546,53 @@ print(f"\n{hist_passed}/{hist_total} route_with_history tests passed")
 
 total_passed += hist_passed
 total_tests += hist_total
+
+# --- score_matrix tests ---
+mx_total = 6
+mx_passed = 0
+
+# 1. basic matrix shape
+r_mx = PromptRouter()
+mx = r_mx.score_matrix(["Fix bug", "Research AI", "Write docs"])
+assert len(mx["matrix"]) == 3, "3 prompts = 3 rows"
+assert len(mx["matrix"][0]) == len(r_mx.agents), "columns = agents"
+print("  ✅ score_matrix: correct shape")
+mx_passed += 1
+
+# 2. best_agent_per_prompt correctness
+assert mx["best_agent_per_prompt"][0] == "coder"
+assert mx["best_agent_per_prompt"][1] == "researcher"
+print("  ✅ score_matrix: best agent per prompt")
+mx_passed += 1
+
+# 3. agent_coverage sums to ~1.0
+total_cov = sum(mx["agent_coverage"].values())
+assert abs(total_cov - 1.0) < 0.01, f"coverage should sum to 1.0, got {total_cov}"
+print("  ✅ score_matrix: coverage sums to 1.0")
+mx_passed += 1
+
+# 4. empty prompts
+mx_empty = r_mx.score_matrix([])
+assert mx_empty["matrix"] == []
+assert mx_empty["best_agent_per_prompt"] == []
+print("  ✅ score_matrix: empty prompts")
+mx_passed += 1
+
+# 5. single prompt
+mx_one = r_mx.score_matrix(["Fix bug"])
+assert len(mx_one["matrix"]) == 1
+assert mx_one["best_agent_per_prompt"][0] == "coder"
+print("  ✅ score_matrix: single prompt")
+mx_passed += 1
+
+# 6. all zero scores → None best agents
+mx_zero = r_mx.score_matrix(["zzzzz xxxxx"])
+assert mx_zero["best_agent_per_prompt"][0] is None or all(s == 0 for s in mx_zero["matrix"][0])
+print("  ✅ score_matrix: zero score handling")
+mx_passed += 1
+
+print(f"\n{mx_passed}/{mx_total} score_matrix tests passed")
+
+total_passed += mx_passed
+total_tests += mx_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")

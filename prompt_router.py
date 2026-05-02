@@ -397,6 +397,35 @@ class PromptRouter:
                              patterns=d.get("patterns", []),
                              priority=d.get("priority", 1.0)) for d in data]
 
+    def score_matrix(self, prompts: list[str]) -> dict:
+        """Compute a prompts × agents score matrix.
+        Returns dict with 'matrix' (list of rows), 'agents' (column names),
+        'best_agent_per_prompt', and 'agent_coverage' (% of prompts where agent wins).
+        """
+        agents = [a.name for a in self.agents]
+        matrix = []
+        best_per = []
+        for p in prompts:
+            row = []
+            for a in self.agents:
+                row.append(round(a.score(p), 4))
+            matrix.append(row)
+            best_idx = row.index(max(row))
+            best_per.append(agents[best_idx] if max(row) > 0 else None)
+
+        # Agent coverage: what % of prompts each agent wins
+        coverage = {}
+        for name in agents:
+            wins = sum(1 for b in best_per if b == name)
+            coverage[name] = round(wins / len(prompts), 4) if prompts else 0.0
+
+        return {
+            "agents": agents,
+            "matrix": matrix,
+            "best_agent_per_prompt": best_per,
+            "agent_coverage": coverage,
+        }
+
     def route_with_history(self, prompt: str, history: Optional[list[str]] = None,
                             avoid_repeat: bool = True, penalty: float = 0.3) -> dict:
         """Route considering conversation history. Avoids routing to agents
