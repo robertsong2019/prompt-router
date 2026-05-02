@@ -397,6 +397,50 @@ class PromptRouter:
                              patterns=d.get("patterns", []),
                              priority=d.get("priority", 1.0)) for d in data]
 
+    def route_with_history(self, prompt: str, history: Optional[list[str]] = None,
+                            avoid_repeat: bool = True, penalty: float = 0.3) -> dict:
+        """Route considering conversation history. Avoids routing to agents
+        that dominated recent turns, promoting diversity.
+        Returns dict with 'agent', 'score', 'agent_counts', 'diversified'.
+        """
+        if history is None:
+            history = []
+        # Count recent agent usage
+        counts: dict[str, int] = {}
+        for h in history:
+            counts[h] = counts.get(h, 0) + 1
+
+        # Score all agents
+        scores = [(a.name, a.score(prompt)) for a in self.agents]
+
+        # Apply penalty for repeated agents
+        adjusted = []
+        for name, score in scores:
+            adj = score
+            if avoid_repeat and name in counts:
+                adj -= penalty * counts[name]
+            adjusted.append((name, adj, score))
+        adjusted.sort(key=lambda x: x[1], reverse=True)
+
+        best_name, best_adj, best_raw = adjusted[0] if adjusted else (None, 0.0, 0.0)
+        if best_adj <= 0:
+            # Pick best non-zero adjusted score
+            positive = [(n, a, r) for n, a, r in adjusted if a > 0]
+            if positive:
+                best_name, best_adj, best_raw = positive[0]
+            elif scores:
+                scores.sort(key=lambda x: x[1], reverse=True)
+                best_name, best_raw = scores[0]
+                best_adj = best_raw
+
+        return {
+            "agent": best_name,
+            "score": round(best_raw, 4),
+            "adjusted_score": round(best_adj, 4),
+            "agent_counts": counts,
+            "diversified": best_name != self.route(prompt)[0] if counts else False,
+        }
+
     def route_by_tags(self, prompt: str, tags: list[str]) -> tuple[Optional[str], float, list[tuple[str, float]]]:
         """Route only to agents whose name or description matches any of the given tags.
         Useful for domain-scoped routing (e.g. only route to code-related agents).

@@ -496,4 +496,54 @@ print(f"\n{tag_passed}/{tag_total} route_by_tags tests passed")
 
 total_passed += tag_passed
 total_tests += tag_total
+
+# --- route_with_history tests ---
+hist_total = 6
+hist_passed = 0
+
+# 1. empty history = normal routing
+r_h = PromptRouter()
+res = r_h.route_with_history("Fix the bug", [])
+assert res["agent"] == "coder", f"got {res['agent']}"
+assert res["diversified"] == False
+print("  ✅ route_with_history: empty history = normal routing")
+hist_passed += 1
+
+# 2. None history = normal routing
+res = r_h.route_with_history("Fix the bug", None)
+assert res["agent"] == "coder"
+print("  ✅ route_with_history: None history = normal routing")
+hist_passed += 1
+
+# 3. high penalty causes diversification when runner-up exists
+res = r_h.route_with_history("Research and explain the bug", ["researcher", "researcher", "researcher", "researcher", "researcher"], penalty=1.0)
+assert res["agent_counts"] == {"researcher": 5}
+assert res["diversified"] == True, f"should diversify from researcher, got {res['agent']}"
+print("  ✅ route_with_history: high penalty causes diversification")
+hist_passed += 1
+
+# 4. adjusted_score < raw score for repeated agent
+res = r_h.route_with_history("Write a function", ["coder"])
+assert res["adjusted_score"] <= res["score"]
+print("  ✅ route_with_history: penalty reduces adjusted score")
+hist_passed += 1
+
+# 5. no repeat avoidance
+res = r_h.route_with_history("Fix the bug", ["coder", "coder"], avoid_repeat=False)
+assert res["agent"] == "coder", "no avoidance should still pick coder"
+assert res["diversified"] == False
+print("  ✅ route_with_history: avoid_repeat=False disables penalty")
+hist_passed += 1
+
+# 6. custom penalty scales (use moderate penalty to avoid fallback)
+res_low = r_h.route_with_history("Fix the bug", ["coder"], penalty=0.1)
+res_high = r_h.route_with_history("Fix the bug", ["coder"], penalty=0.5)
+assert res_high["adjusted_score"] <= res_low["adjusted_score"]
+print("  ✅ route_with_history: custom penalty scales")
+hist_passed += 1
+
+print(f"\n{hist_passed}/{hist_total} route_with_history tests passed")
+
+total_passed += hist_passed
+total_tests += hist_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
