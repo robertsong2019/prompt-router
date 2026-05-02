@@ -7,4 +7,8 @@ timestamp	commit	metric	value	status	description
 2026-05-01T21:05	8946e7e	test_count	27→30	keep	save_config/load_config: JSON persistence for agent configs, 3 new tests
 2026-05-01T21:10	5bfeb6b	test_count	30→34	keep	route_top_k(k): top-K agent selection with explanations, 4 new tests
 2026-05-02T19:10	689f9a1	test_count	34→43	keep	route_ensemble(k,weights) + merge_routers(): multi-agent delegation + router composition, 9 new tests + PromptRouter([]) fix
-2026-05-02T19:30	ff3c8c5	test_count	34→48	keep	route_adaptive(correct_agent): feedback-driven priority adjustment + accuracy tracking, 14 new tests (3 cycles: ensemble+merge+adaptive)
+2026-05-02T19:30	ff3c8c5	test_count	34→48	keep	route_ensemble + merge_routers + route_adaptive, 14 new tests
+2026-05-02T21:10	2ab8d34	test_count	48→54	keep	route_by_tags() + fix DEFAULT_AGENTS shared mutation bug, 6 new tests
+2026-05-02T21:20	af87473	test_count	54→60	keep	route_with_history() - context-aware routing with diversity penalty, 6 new tests
+2026-05-02T21:30	f3fb986	test_count	60→66	keep	score_matrix() - prompts × agents scoring matrix with coverage, 6 new tests
+2026-05-02T21:40	1636816	test_count	66→72	keep	route_chain() - sequential multi-prompt routing with diversity, 6 new tests
