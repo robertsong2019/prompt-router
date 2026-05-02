@@ -397,6 +397,37 @@ class PromptRouter:
                              patterns=d.get("patterns", []),
                              priority=d.get("priority", 1.0)) for d in data]
 
+    def route_chain(self, prompts: list[str], diversify: bool = True,
+                    penalty: float = 0.5) -> list[dict]:
+        """Route a sequence of prompts, optionally diversifying across agents.
+        Returns list of routing results with chain context (position, prev_agent).
+        """
+        history = []
+        results = []
+        for i, p in enumerate(prompts):
+            if diversify and history:
+                res = self.route_with_history(p, history, penalty=penalty)
+                results.append({
+                    "position": i,
+                    "prompt": p,
+                    "agent": res["agent"],
+                    "score": res["score"],
+                    "prev_agent": history[-1] if history else None,
+                    "diversified": res["diversified"],
+                })
+            else:
+                agent, score, _ = self.route(p)
+                results.append({
+                    "position": i,
+                    "prompt": p,
+                    "agent": agent,
+                    "score": round(score, 4),
+                    "prev_agent": history[-1] if history else None,
+                    "diversified": False,
+                })
+            history.append(results[-1]["agent"])
+        return results
+
     def score_matrix(self, prompts: list[str]) -> dict:
         """Compute a prompts × agents score matrix.
         Returns dict with 'matrix' (list of rows), 'agents' (column names),

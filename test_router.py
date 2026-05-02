@@ -595,4 +595,55 @@ print(f"\n{mx_passed}/{mx_total} score_matrix tests passed")
 
 total_passed += mx_passed
 total_tests += mx_total
+
+# --- route_chain tests ---
+chain_total = 6
+chain_passed = 0
+
+# 1. basic chain
+r_ch = PromptRouter()
+chain = r_ch.route_chain(["Fix bug", "Research AI", "Write docs"])
+assert len(chain) == 3
+assert chain[0]["position"] == 0
+assert chain[0]["prev_agent"] is None
+print("  ✅ route_chain: basic chain structure")
+chain_passed += 1
+
+# 2. chain tracks prev_agent
+assert chain[1]["prev_agent"] == chain[0]["agent"]
+assert chain[2]["prev_agent"] == chain[1]["agent"]
+print("  ✅ route_chain: prev_agent tracking")
+chain_passed += 1
+
+# 3. empty chain
+assert r_ch.route_chain([]) == []
+print("  ✅ route_chain: empty input")
+chain_passed += 1
+
+# 4. diversify promotes variety
+chain_div = r_ch.route_chain(["Fix bug", "Fix error", "Fix crash", "Fix issue", "Fix problem"], diversify=True, penalty=0.5)
+agents_used = set(r["agent"] for r in chain_div)
+chain_nodiv = r_ch.route_chain(["Fix bug", "Fix error", "Fix crash", "Fix issue", "Fix problem"], diversify=False)
+agents_nodiv = set(r["agent"] for r in chain_nodiv)
+assert len(agents_used) >= len(agents_nodiv), "diversify should not reduce variety"
+print("  ✅ route_chain: diversify promotes variety")
+chain_passed += 1
+
+# 5. single prompt
+chain_one = r_ch.route_chain(["Fix bug"])
+assert len(chain_one) == 1
+assert chain_one[0]["agent"] == "coder"
+print("  ✅ route_chain: single prompt")
+chain_passed += 1
+
+# 6. chain results have all expected keys
+expected_keys = {"position", "prompt", "agent", "score", "prev_agent", "diversified"}
+assert set(chain[0].keys()) == expected_keys
+print("  ✅ route_chain: result keys")
+chain_passed += 1
+
+print(f"\n{chain_passed}/{chain_total} route_chain tests passed")
+
+total_passed += chain_passed
+total_tests += chain_total
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
