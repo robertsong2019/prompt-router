@@ -516,6 +516,80 @@ class PromptRouter:
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores[0][0] if scores[0][1] > 0 else None, scores[0][1], scores
 
+    def route_round_robin(self, prompt: str, state: Optional[dict] = None) -> dict:
+        """Route using weighted round-robin load balancing.
+        State dict tracks per-agent assignment counts. Pass state between calls
+        for continuity. Agent scores are used as weights — higher score = more likely
+        to be picked, but less-loaded agents get a boost.
+        Returns dict with 'agent', 'score', 'index', 'assignments'.
+        """
+        if state is None:
+            state = {"index": 0, "assignments": {}}
+        state.setdefault("assignments", {})
+        state.setdefault("index", 0)
+
+        # Score all agents
+        scored = [(a.name, a.score(prompt)) for a in self.agents]
+        if not scored:
+            return {"agent": None, "score": 0.0, "index": 0, "assignments": {}}
+
+        assignments = state["assignments"]
+        max_assigned = max(assignments.values()) if assignments else 0
+
+        # Boost underutilized agents: score - (count - min_count) * penalty
+        counts = [assignments.get(n, 0) for n, _ in scored]
+        min_count = min(counts) if counts else 0
+
+        adjusted = []
+        for i, (name, score) in enumerate(scored):
+            load_penalty = (assignments.get(name, 0) - min_count) * 0.15
+            adjusted.append((name, score - load_penalty, i))
+
+        adjusted.sort(key=lambda x: x[1], reverse=True)
+        best_name, best_score, best_idx = adjusted[0]
+
+        # Update state
+        assignments[best_name] = assignments.get(best_name, 0) + 1
+        state["index"] = best_idx
+
+        return {
+            "agent": best_name,
+            "score": round(best_score, 4),
+            "index": best_idx,
+            "assignments": dict(assignments),
+        }
+
+    def route_least_loaded(self, prompt: str, loads: Optional[dict[str, int]] = None,
+                             threshold: float = 0.1) -> dict:
+        """Route to the least-loaded agent that still meets a minimum score threshold.
+        Loads dict tracks current load per agent. Among agents scoring above threshold,
+        picks the one with lowest load. Ties broken by score.
+        Returns dict with 'agent', 'score', 'load', 'candidates'.
+        """
+        if loads is None:
+            loads = {}
+
+        scored = [(a.name, a.score(prompt)) for a in self.agents]
+        if not scored:
+            return {"agent": None, "score": 0.0, "load": 0, "candidates": []}
+
+        # Filter by threshold
+        candidates = [(n, s) for n, s in scored if s >= threshold]
+        if not candidates:
+            # Fall back to best score regardless of threshold
+            candidates = scored
+
+        # Sort: least loaded first, then highest score
+        candidates.sort(key=lambda x: (loads.get(x[0], 0), -x[1]))
+
+        best_name, best_score = candidates[0]
+        return {
+            "agent": best_name,
+            "score": round(best_score, 4),
+            "load": loads.get(best_name, 0),
+            "candidates": [(n, round(s, 4)) for n, s in candidates],
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

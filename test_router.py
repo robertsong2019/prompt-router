@@ -646,4 +646,121 @@ print(f"\n{chain_passed}/{chain_total} route_chain tests passed")
 
 total_passed += chain_passed
 total_tests += chain_total
+
+# ========== route_round_robin tests ==========
+r_total = 6
+r_passed = 0
+r = PromptRouter()
+
+# 1. basic routing with fresh state
+result = r.route_round_robin("Fix the bug")
+assert result["agent"] is not None
+assert result["score"] > 0
+assert result["index"] >= 0
+assert "assignments" in result
+print("  ✅ route_round_robin: basic routing")
+r_passed += 1
+
+# 2. state persists across calls
+state = {}
+r1 = r.route_round_robin("Write code", state=state)
+r2 = r.route_round_robin("Write more code", state=state)
+assert state["assignments"][r1["agent"]] == 1 or state["assignments"][r1["agent"]] == 2
+assert sum(state["assignments"].values()) == 2
+print("  ✅ route_round_robin: state persists")
+r_passed += 1
+
+# 3. load balancing distributes across agents
+state_lb = {}
+for prompt in ["Fix bug", "Debug error", "Refactor code", "Write test", "Optimize", "Deploy", "Review PR", "Add feature", "Clean up", "Ship it"]:
+    r.route_round_robin(prompt, state=state_lb)
+unique_agents = len(state_lb["assignments"])
+assert unique_agents >= 2, f"Only {unique_agents} agents used, expected load balancing"
+print("  ✅ route_round_robin: distributes across agents")
+r_passed += 1
+
+# 4. empty router
+empty = PromptRouter([])
+result_e = empty.route_round_robin("test")
+assert result_e["agent"] is None
+print("  ✅ route_round_robin: empty router")
+r_passed += 1
+
+# 5. state dict is mutable and shared
+shared = {}
+r.route_round_robin("A", state=shared)
+copy_before = dict(shared["assignments"])
+r.route_round_robin("B", state=shared)
+assert shared["assignments"] != copy_before
+print("  ✅ route_round_robin: shared state")
+r_passed += 1
+
+# 6. assignments count matches calls
+count_state = {}
+n = 5
+for i in range(n):
+    r.route_round_robin(f"prompt {i}", state=count_state)
+total_assigned = sum(count_state["assignments"].values())
+assert total_assigned == n
+print("  ✅ route_round_robin: assignment count")
+r_passed += 1
+
+print(f"\n{r_passed}/{r_total} route_round_robin tests passed")
+total_passed += r_passed
+total_tests += r_total
+
+# ========== route_least_loaded tests ==========
+ll_total = 6
+ll_passed = 0
+
+# 1. basic least loaded
+result = r.route_least_loaded("Fix the bug")
+assert result["agent"] is not None
+assert result["score"] > 0
+assert "load" in result
+assert "candidates" in result
+print("  ✅ route_least_loaded: basic routing")
+ll_passed += 1
+
+# 2. picks least loaded agent
+loads = {"coder": 10, "researcher": 0, "writer": 5}
+result_ll = r.route_least_loaded("Explain quantum computing", loads=loads)
+# researcher has load 0 and should score well for this prompt
+assert result_ll["load"] <= 5  # should pick a low-load agent
+print("  ✅ route_least_loaded: picks low load")
+ll_passed += 1
+
+# 3. all loads equal → falls back to score
+loads_equal = {"coder": 5, "researcher": 5, "writer": 5}
+result_eq = r.route_least_loaded("Write a blog post", loads=loads_equal)
+assert result_eq["agent"] is not None
+print("  ✅ route_least_loaded: equal loads → score")
+ll_passed += 1
+
+# 4. threshold filters low-scoring agents
+loads_thresh = {"researcher": 0, "writer": 0}
+result_t = r.route_least_loaded("Fix the bug", loads=loads_thresh, threshold=0.5)
+# Should still return someone (falls back if all below threshold)
+assert result_t["agent"] is not None
+print("  ✅ route_least_loaded: threshold filter")
+ll_passed += 1
+
+# 5. empty router
+empty = PromptRouter([])
+result_e = empty.route_least_loaded("test")
+assert result_e["agent"] is None
+print("  ✅ route_least_loaded: empty router")
+ll_passed += 1
+
+# 6. candidates list is populated
+result_c = r.route_least_loaded("Write code")
+assert len(result_c["candidates"]) > 0
+# candidates sorted by load then score
+print("  ✅ route_least_loaded: candidates populated")
+ll_passed += 1
+
+print(f"\n{ll_passed}/{ll_total} route_least_loaded tests passed")
+total_passed += ll_passed
+total_tests += ll_total
+
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
