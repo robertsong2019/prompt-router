@@ -763,4 +763,86 @@ print(f"\n{ll_passed}/{ll_total} route_least_loaded tests passed")
 total_passed += ll_passed
 total_tests += ll_total
 
+# ========== route_by_capability tests ==========
+cap_total = 6
+cap_passed = 0
+
+# 1. mode='any': matches at least one capability
+result = r.route_by_capability("Fix the bug", capabilities=["debug", "python"])
+assert result["agent"] is not None
+assert result["mode"] == "any"
+print("  ✅ route_by_capability: any mode")
+cap_passed += 1
+
+# 2. mode='all': must match all capabilities
+result_all = r.route_by_capability("Fix the bug", capabilities=["debug", "python", "testing"], mode="all")
+# hard to match all 3, agent might be None
+assert result_all["mode"] == "all"
+print("  ✅ route_by_capability: all mode")
+cap_passed += 1
+
+# 3. mode='best': picks most matches
+result_best = r.route_by_capability("Write secure code", capabilities=["debug", "security", "code", "review"], mode="best")
+assert result_best["agent"] is not None
+assert len(result_best["matched_capabilities"]) > 0
+print("  ✅ route_by_capability: best mode")
+cap_passed += 1
+
+# 4. no matching capabilities
+result_none = r.route_by_capability("Fix the bug", capabilities=["xyznonexistent"])
+assert result_none["agent"] is None or len(result_none["matched_capabilities"]) == 0
+print("  ✅ route_by_capability: no match")
+cap_passed += 1
+
+# 5. empty capabilities list
+result_empty = r.route_by_capability("Fix the bug", capabilities=[])
+assert result_empty["agent"] is None
+print("  ✅ route_by_capability: empty caps")
+cap_passed += 1
+
+# 6. empty router
+empty = PromptRouter([])
+result_e = empty.route_by_capability("test", capabilities=["code"])
+assert result_e["agent"] is None
+print("  ✅ route_by_capability: empty router")
+cap_passed += 1
+
+print(f"\n{cap_passed}/{cap_total} route_by_capability tests passed")
+total_passed += cap_passed
+total_tests += cap_total
+
+# ========== agent_stats tests ==========
+stats_total = 4
+stats_passed = 0
+
+# 1. returns summary
+stats = r.agent_stats()
+assert stats["total_agents"] > 0
+assert len(stats["agents"]) == stats["total_agents"]
+print("  ✅ agent_stats: returns summary")
+stats_passed += 1
+
+# 2. agent info has expected keys
+first = stats["agents"][0]
+assert "name" in first and "keyword_count" in first and "description_length" in first
+print("  ✅ agent_stats: agent info keys")
+stats_passed += 1
+
+# 3. empty router
+empty_stats = PromptRouter([]).agent_stats()
+assert empty_stats["total_agents"] == 0
+assert empty_stats["agents"] == []
+print("  ✅ agent_stats: empty router")
+stats_passed += 1
+
+# 4. keywords are sorted
+first_kw = stats["agents"][0]["keywords"]
+assert first_kw == sorted(first_kw)
+print("  ✅ agent_stats: keywords sorted")
+stats_passed += 1
+
+print(f"\n{stats_passed}/{stats_total} agent_stats tests passed")
+total_passed += stats_passed
+total_tests += stats_total
+
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")

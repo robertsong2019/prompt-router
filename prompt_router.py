@@ -590,6 +590,63 @@ class PromptRouter:
             "candidates": [(n, round(s, 4)) for n, s in candidates],
         }
 
+    def route_by_capability(self, prompt: str, capabilities: list[str],
+                              mode: str = "any") -> dict:
+        """Route to agents whose keywords match required capabilities.
+        mode='any': agent must match at least one capability (union)
+        mode='all': agent must match all capabilities (intersection)
+        mode='best': pick agent with most capability matches
+        Returns dict with 'agent', 'score', 'matched_capabilities', 'mode'.
+        """
+        caps_lower = {c.lower() for c in capabilities}
+
+        results = []
+        for a in self.agents:
+            kw_lower = {k.lower() for k in a.keywords}
+            matched = caps_lower & kw_lower
+            score = a.score(prompt)
+
+            if mode == "any" and matched:
+                results.append((a.name, score, matched))
+            elif mode == "all" and matched == caps_lower:
+                results.append((a.name, score, matched))
+            elif mode == "best":
+                results.append((a.name, score, matched))
+
+        if not results:
+            return {
+                "agent": None, "score": 0.0,
+                "matched_capabilities": set(), "mode": mode,
+            }
+
+        # Sort by number of matched capabilities (desc), then score (desc)
+        results.sort(key=lambda x: (len(x[2]), x[1]), reverse=True)
+        best_name, best_score, best_matched = results[0]
+
+        return {
+            "agent": best_name,
+            "score": round(best_score, 4),
+            "matched_capabilities": sorted(best_matched),
+            "mode": mode,
+        }
+
+    def agent_stats(self) -> dict:
+        """Return summary statistics about the router's agents.
+        Includes per-agent keyword count, description length, and total agents.
+        """
+        agents_info = []
+        for a in self.agents:
+            agents_info.append({
+                "name": a.name,
+                "keyword_count": len(a.keywords),
+                "description_length": len(a.description),
+                "keywords": sorted(a.keywords),
+            })
+        return {
+            "total_agents": len(self.agents),
+            "agents": agents_info,
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""
