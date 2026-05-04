@@ -647,6 +647,101 @@ class PromptRouter:
             "agents": agents_info,
         }
 
+    def route_with_diversity(self, prompt: str, recent_agents: Optional[list[str]] = None,
+                              penalty: float = 0.3) -> dict:
+        """Route with diversity penalty — discourages recently-used agents.
+        Args:
+            recent_agents: list of agent names used recently
+            penalty: score reduction factor per recent occurrence
+        Returns dict with agent, score, penalties, all_scored.
+        """
+        if recent_agents is None:
+            recent_agents = []
+        counts = {}
+        for name in recent_agents:
+            counts[name] = counts.get(name, 0) + 1
+
+        all_scored = []
+        for a in self.agents:
+            base = a.score(prompt)
+            pen = counts.get(a.name, 0) * penalty
+            adjusted = max(0.0, base - pen)
+            all_scored.append({
+                "name": a.name,
+                "base_score": base,
+                "penalty": pen,
+                "adjusted_score": adjusted,
+            })
+
+        all_scored.sort(key=lambda x: x["adjusted_score"], reverse=True)
+        best = all_scored[0] if all_scored else None
+
+        if not best or best["adjusted_score"] == 0.0:
+            fallback = self._heuristic_fallback(prompt)
+            # find fallback in scored list or create entry
+            fb_entry = next((s for s in all_scored if s["name"] == fallback), None)
+            if fb_entry:
+                best = fb_entry
+            else:
+                best = {"name": fallback, "base_score": 0.0, "penalty": 0.0, "adjusted_score": 0.0}
+
+        return {
+            "agent": best["name"],
+            "base_score": best["base_score"],
+            "penalty": best["penalty"],
+            "adjusted_score": best["adjusted_score"],
+            "all_scored": all_scored,
+        }
+
+    def deduplicate_agents(self) -> int:
+        """Remove duplicate agents (by name), keeping first occurrence.
+        Returns number of duplicates removed.
+        """
+        seen = set()
+        unique = []
+        for a in self.agents:
+            if a.name not in seen:
+                seen.add(a.name)
+                unique.append(a)
+        removed = len(self.agents) - len(unique)
+        self.agents = unique
+        return removed
+
+    def route_by_regex(self, prompt: str, pattern: str) -> dict:
+        """Route to agent whose keywords match a regex pattern.
+        Score = relevance score × (number of matching keywords / total keywords).
+        Returns dict with agent, score, matches, all_matches.
+        """
+        import re
+        regex = re.compile(pattern, re.IGNORECASE)
+        all_matches = []
+        for a in self.agents:
+            matched_kws = [kw for kw in a.keywords if regex.search(kw)]
+            if matched_kws:
+                base = a.score(prompt)
+                bonus = len(matched_kws) / max(len(a.keywords), 1)
+                score = base * (0.5 + 0.5 * bonus)  # weight: 50% relevance + 50% match ratio
+                all_matches.append({
+                    "name": a.name,
+                    "score": score,
+                    "matched_keywords": matched_kws,
+                    "match_ratio": bonus,
+                })
+
+        all_matches.sort(key=lambda x: x["score"], reverse=True)
+        best = all_matches[0] if all_matches else None
+
+        if not best or best["score"] == 0.0:
+            best = {"name": None, "score": 0.0, "matched_keywords": [], "match_ratio": 0.0}
+
+        return {
+            "agent": best["name"],
+            "score": best["score"],
+            "matched_keywords": best["matched_keywords"],
+            "match_ratio": best["match_ratio"],
+            "all_matches": all_matches,
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

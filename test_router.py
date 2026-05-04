@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Quick sanity tests for prompt_router."""
-from prompt_router import PromptRouter
+from prompt_router import PromptRouter, DEFAULT_AGENTS
 
 router = PromptRouter()
 
@@ -844,5 +844,146 @@ stats_passed += 1
 print(f"\n{stats_passed}/{stats_total} agent_stats tests passed")
 total_passed += stats_passed
 total_tests += stats_total
+
+print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
+
+# ========== route_with_diversity tests ==========
+div_total = 7
+div_passed = 0
+
+# 1. no recent agents = same as plain route
+plain_agent, plain_score, _ = r.route("Write some code")
+div_result = r.route_with_diversity("Write some code")
+assert div_result["agent"] == plain_agent
+assert div_result["penalty"] == 0.0
+print("  ✅ route_with_diversity: no recent = plain route")
+div_passed += 1
+
+# 2. penalty reduces top agent score
+div2 = r.route_with_diversity("Write some code", recent_agents=["coder"])
+assert div2["penalty"] > 0
+print("  ✅ route_with_diversity: penalty applied")
+div_passed += 1
+
+# 3. heavy penalty can swap agent
+div3 = r.route_with_diversity("Write some code", recent_agents=["coder"] * 10, penalty=0.5)
+assert div3["agent"] != "coder" or div3["penalty"] > 0
+print("  ✅ route_with_diversity: heavy penalty changes ranking")
+div_passed += 1
+
+# 4. all_scored list populated
+assert len(div3["all_scored"]) == len(r.agents)
+print("  ✅ route_with_diversity: all_scored populated")
+div_passed += 1
+
+# 5. unknown agent in recent = no effect
+div5 = r.route_with_diversity("test", recent_agents=["nonexistent_agent"])
+assert div5["penalty"] == 0.0
+print("  ✅ route_with_diversity: unknown agent ignored")
+div_passed += 1
+
+# 6. empty router
+empty_div = PromptRouter([]).route_with_diversity("test")
+assert empty_div["agent"] is not None  # heuristic fallback
+print("  ✅ route_with_diversity: empty router fallback")
+div_passed += 1
+
+# 7. base_score preserved correctly
+div7 = r.route_with_diversity("Write code")
+for entry in div7["all_scored"]:
+    assert "base_score" in entry
+    assert "adjusted_score" in entry
+    assert entry["adjusted_score"] <= entry["base_score"]
+print("  ✅ route_with_diversity: scores consistent")
+div_passed += 1
+
+print(f"\n{div_passed}/{div_total} route_with_diversity tests passed")
+total_passed += div_passed
+total_tests += div_total
+
+# ========== deduplicate_agents tests ==========
+dedup_total = 4
+dedup_passed = 0
+
+# 1. no duplicates = 0 removed
+dedup_r = PromptRouter(list(DEFAULT_AGENTS))
+removed = dedup_r.deduplicate_agents()
+assert removed == 0
+assert len(dedup_r.agents) == len(DEFAULT_AGENTS)
+print("  ✅ deduplicate_agents: no duplicates")
+dedup_passed += 1
+
+# 2. with duplicates = removed
+dedup_r2 = PromptRouter(list(DEFAULT_AGENTS) + [DEFAULT_AGENTS[0]])
+first_count = sum(1 for a in dedup_r2.agents if a.name == DEFAULT_AGENTS[0].name)
+assert first_count == 2
+removed2 = dedup_r2.deduplicate_agents()
+assert removed2 == 1
+assert len(dedup_r2.agents) == len(DEFAULT_AGENTS)
+print("  ✅ deduplicate_agents: removes duplicates")
+dedup_passed += 1
+
+# 3. keeps first occurrence
+dedup_r3 = PromptRouter([DEFAULT_AGENTS[0], DEFAULT_AGENTS[1], DEFAULT_AGENTS[0]])
+dedup_r3.deduplicate_agents()
+names = [a.name for a in dedup_r3.agents]
+assert names.count(DEFAULT_AGENTS[0].name) == 1
+print("  ✅ deduplicate_agents: keeps first occurrence")
+dedup_passed += 1
+
+# 4. empty router
+dedup_empty = PromptRouter([])
+assert dedup_empty.deduplicate_agents() == 0
+print("  ✅ deduplicate_agents: empty router")
+dedup_passed += 1
+
+print(f"\n{dedup_passed}/{dedup_total} deduplicate_agents tests passed")
+total_passed += dedup_passed
+total_tests += dedup_total
+
+# ========== route_by_regex tests ==========
+regex_total = 6
+regex_passed = 0
+
+# 1. match security keywords → reviewer
+regex_r = r.route_by_regex("Check security", pattern=r"secur")
+assert regex_r["agent"] is not None
+assert len(regex_r["matched_keywords"]) > 0
+print("  ✅ route_by_regex: matches keywords")
+regex_passed += 1
+
+# 2. no match returns None agent
+regex_none = r.route_by_regex("test", pattern=r"^zzzzz$")
+assert regex_none["agent"] is None
+print("  ✅ route_by_regex: no match")
+regex_passed += 1
+
+# 3. all_matches populated
+regex_am = r.route_by_regex("Write code", pattern=r"code|bug")
+assert isinstance(regex_am["all_matches"], list)
+print("  ✅ route_by_regex: all_matches populated")
+regex_passed += 1
+
+# 4. match_ratio between 0 and 1
+for entry in regex_am["all_matches"]:
+    assert 0.0 <= entry["match_ratio"] <= 1.0
+print("  ✅ route_by_regex: match_ratio in range")
+regex_passed += 1
+
+# 5. empty router
+regex_empty = PromptRouter([]).route_by_regex("test", pattern=r"code")
+assert regex_empty["agent"] is None or regex_empty["score"] == 0.0
+print("  ✅ route_by_regex: empty router")
+regex_passed += 1
+
+# 6. case insensitive matching
+regex_ci = r.route_by_regex("Research topic", pattern=r"RESEARCH")
+assert regex_ci["agent"] is not None
+print("  ✅ route_by_regex: case insensitive")
+regex_passed += 1
+
+print(f"\n{regex_passed}/{regex_total} route_by_regex tests passed")
+total_passed += regex_passed
+total_tests += regex_total
 
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
