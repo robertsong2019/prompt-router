@@ -15,3 +15,4 @@ timestamp	commit	metric	value	status	description
 2026-05-03T19:10	2028f3c	test_count	84	keep	route_round_robin() + route_least_loaded(): load-balanced routing, 12 new tests
 2026-05-03T19:20	6ffd60b	test_count	94	keep	route_by_capability(any/all/best) + agent_stats(), 10 new tests
 2026-05-04T19:10	e62c3be	test_count	111	keep	route_with_diversity + deduplicate_agents + route_by_regex, 17 new tests
+2026-05-05T19:10	83b094d	test_count	111→124	keep	cooldown mechanism + route_by_priority with boost/decay: +13 tests
