@@ -785,6 +785,43 @@ class PromptRouter:
 
         return eligible[0][0], eligible[0][1], eligible
 
+    def route_by_priority(self, prompt: str, boost: float = 0.0, decay: float = 0.0,
+                           history: Optional[list[str]] = None) -> dict:
+        """Route weighted heavily by agent priority field.
+        boost: add to priority for each match (keyword/pattern hit)
+        decay: multiply priority by decay^(times agent used in history)
+        Returns dict with 'agent', 'effective_priority', 'rankings'.
+        """
+        if history is None:
+            history = []
+        usage_counts: dict[str, int] = {}
+        for h in history:
+            usage_counts[h] = usage_counts.get(h, 0) + 1
+
+        rankings = []
+        for a in self.agents:
+            base = a.priority
+            score = a.score(prompt)
+            effective = base + boost * (1.0 if score > 0 else 0.0)
+            if decay > 0 and a.name in usage_counts:
+                effective *= decay ** usage_counts[a.name]
+            rankings.append({
+                "name": a.name,
+                "base_priority": base,
+                "score": round(score, 4),
+                "effective_priority": round(effective, 4),
+                "usage": usage_counts.get(a.name, 0),
+            })
+
+        rankings.sort(key=lambda x: (x["effective_priority"], x["score"]), reverse=True)
+        best = rankings[0] if rankings else None
+
+        return {
+            "agent": best["name"] if best else None,
+            "effective_priority": best["effective_priority"] if best else 0.0,
+            "rankings": rankings,
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

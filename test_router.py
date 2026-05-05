@@ -1045,4 +1045,65 @@ print(f"\n{cd_passed}/{cd_total} cooldown tests passed")
 total_passed += cd_passed
 total_tests += cd_total
 
+# ========== route_by_priority tests ==========
+p_total = 0
+p_passed = 0
+
+# 1. basic priority routing
+p_total += 1
+pr_r = PromptRouter()
+result = pr_r.route_by_priority("Fix the bug")
+assert result["agent"] is not None
+assert len(result["rankings"]) == len(pr_r.agents)
+assert result["effective_priority"] > 0
+print("  ✅ route_by_priority: basic routing")
+p_passed += 1
+
+# 2. boost increases effective priority for matching agents
+p_total += 1
+result_no_boost = pr_r.route_by_priority("Fix the bug", boost=0.0)
+result_boost = pr_r.route_by_priority("Fix the bug", boost=2.0)
+coder_no = next(r for r in result_no_boost["rankings"] if r["name"] == "coder")
+coder_boost = next(r for r in result_boost["rankings"] if r["name"] == "coder")
+assert coder_boost["effective_priority"] > coder_no["effective_priority"]
+print("  ✅ route_by_priority: boost increases effective priority")
+p_passed += 1
+
+# 3. decay reduces priority for frequently used agents
+p_total += 1
+result_decay = pr_r.route_by_priority("Fix the bug", decay=0.5, history=["coder", "coder", "coder"])
+coder_decay = next(r for r in result_decay["rankings"] if r["name"] == "coder")
+assert coder_decay["usage"] == 3
+assert coder_decay["effective_priority"] < coder_decay["base_priority"]
+print("  ✅ route_by_priority: decay reduces priority for heavy usage")
+p_passed += 1
+
+# 4. rankings sorted by effective_priority descending
+p_total += 1
+priorities = [r["effective_priority"] for r in result["rankings"]]
+assert priorities == sorted(priorities, reverse=True)
+print("  ✅ route_by_priority: rankings sorted descending")
+p_passed += 1
+
+# 5. empty router
+p_total += 1
+empty_pr = PromptRouter([]).route_by_priority("test")
+assert empty_pr["agent"] is None
+print("  ✅ route_by_priority: empty router")
+p_passed += 1
+
+# 6. boost only applies to agents with score > 0
+p_total += 1
+boosted = pr_r.route_by_priority("Fix the bug", boost=5.0)
+for r_entry in boosted["rankings"]:
+    if r_entry["score"] == 0:
+        base_p = next(a.priority for a in pr_r.agents if a.name == r_entry["name"])
+        assert abs(r_entry["effective_priority"] - base_p) < 0.01
+print("  ✅ route_by_priority: boost only for scoring agents")
+p_passed += 1
+
+print(f"\n{p_passed}/{p_total} route_by_priority tests passed")
+total_passed += p_passed
+total_tests += p_total
+
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
