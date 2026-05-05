@@ -986,4 +986,63 @@ print(f"\n{regex_passed}/{regex_total} route_by_regex tests passed")
 total_passed += regex_passed
 total_tests += regex_total
 
+# ========== cooldown tests ==========
+cd_total = 0
+cd_passed = 0
+import time
+
+cd_r = PromptRouter()
+
+# 1. cooldown returns True for existing agent
+cd_total += 1
+assert cd_r.cooldown("coder", seconds=60) is True
+print("  ✅ cooldown: returns True for existing agent")
+cd_passed += 1
+
+# 2. cooldown returns False for non-existent agent
+cd_total += 1
+assert cd_r.cooldown("nonexistent", seconds=60) is False
+print("  ✅ cooldown: returns False for non-existent agent")
+cd_passed += 1
+
+# 3. is_cooled_down returns True during cooldown
+cd_total += 1
+assert cd_r.is_cooled_down("coder") is True
+print("  ✅ is_cooled_down: True during cooldown")
+cd_passed += 1
+
+# 4. is_cooled_down returns False for non-cooled agent
+cd_total += 1
+assert cd_r.is_cooled_down("researcher") is False
+print("  ✅ is_cooled_down: False for non-cooled agent")
+cd_passed += 1
+
+# 5. route_respecting_cooldowns skips cooled agent
+cd_total += 1
+agent, score, eligible = cd_r.route_respecting_cooldowns("Fix the login bug")
+assert agent != "coder", f"should skip coder in cooldown, got {agent}"
+print("  ✅ route_respecting_cooldowns: skips cooled agent")
+cd_passed += 1
+
+# 6. clear_cooldown removes cooldown
+cd_total += 1
+assert cd_r.clear_cooldown("coder") is True
+assert cd_r.is_cooled_down("coder") is False
+agent2, _, _ = cd_r.route_respecting_cooldowns("Fix the login bug")
+assert agent2 == "coder", f"after clearing cooldown, should route to coder, got {agent2}"
+print("  ✅ clear_cooldown: removes cooldown, routing restored")
+cd_passed += 1
+
+# 7. expired cooldown auto-clears on check
+cd_total += 1
+cd_r.cooldown("writer", seconds=0.01)
+time.sleep(0.02)
+assert cd_r.is_cooled_down("writer") is False
+print("  ✅ cooldown: expires and auto-clears")
+cd_passed += 1
+
+print(f"\n{cd_passed}/{cd_total} cooldown tests passed")
+total_passed += cd_passed
+total_tests += cd_total
+
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")

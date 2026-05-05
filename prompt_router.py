@@ -154,6 +154,7 @@ class PromptRouter:
 
     def __init__(self, agents: Optional[list[Agent]] = None):
         self.agents = list(agents) if agents is not None else list(DEFAULT_AGENTS)
+        self._cooldowns: dict[str, float] = {}  # agent_name -> cooldown_until timestamp
 
     def route(self, prompt: str) -> tuple[str, float, list[tuple[str, float]]]:
         """
@@ -741,6 +742,48 @@ class PromptRouter:
             "match_ratio": best["match_ratio"],
             "all_matches": all_matches,
         }
+
+    def cooldown(self, name: str, seconds: float = 60.0) -> bool:
+        """Temporarily disable an agent for `seconds` seconds.
+        Returns True if agent found and cooled down, False otherwise.
+        """
+        import time
+        if not any(a.name == name for a in self.agents):
+            return False
+        self._cooldowns[name] = time.time() + seconds
+        return True
+
+    def is_cooled_down(self, name: str) -> bool:
+        """Check if an agent is currently in cooldown. Returns True if cooled down (inactive)."""
+        import time
+        deadline = self._cooldowns.get(name)
+        if deadline is None:
+            return False
+        if time.time() >= deadline:
+            del self._cooldowns[name]
+            return False
+        return True
+
+    def clear_cooldown(self, name: str) -> bool:
+        """Remove cooldown for an agent. Returns True if cooldown was active."""
+        return self._cooldowns.pop(name, None) is not None
+
+    def route_respecting_cooldowns(self, prompt: str) -> tuple[Optional[str], float, list[tuple[str, float]]]:
+        """Route to best agent that is not in cooldown.
+        Returns (agent, score, all_eligible_scores). Agent is None if all cooled down.
+        """
+        eligible = [(a.name, a.score(prompt)) for a in self.agents
+                    if not self.is_cooled_down(a.name)]
+        eligible.sort(key=lambda x: x[1], reverse=True)
+
+        if not eligible or eligible[0][1] == 0:
+            # Use fallback only if the fallback agent is not cooled down
+            fallback = self._heuristic_fallback(prompt)
+            if fallback and not self.is_cooled_down(fallback):
+                return fallback, 0.0, eligible
+            return None, 0.0, eligible
+
+        return eligible[0][0], eligible[0][1], eligible
 
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
