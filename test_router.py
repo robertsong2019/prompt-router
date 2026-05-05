@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Quick sanity tests for prompt_router."""
 from prompt_router import PromptRouter, DEFAULT_AGENTS
+import json
 
 router = PromptRouter()
 
@@ -1107,3 +1108,215 @@ total_passed += p_passed
 total_tests += p_total
 
 print(f"\n📊 Total: {total_passed}/{total_tests} tests passed")
+
+# ========== route_tournament tests ==========
+t_total = 0
+t_passed = 0
+t_r = PromptRouter()
+
+t_total += 1
+tour = t_r.route_tournament("Fix the login bug")
+assert tour["champion"] == "coder", f"expected coder, got {tour['champion']}"
+assert tour["final_score"] > 0
+assert tour["rounds_played"] > 0
+print("  ✅ route_tournament: basic champion")
+t_passed += 1
+
+t_total += 1
+assert len(tour["bracket"]) >= 1
+first_round = tour["bracket"][0]
+assert len(first_round) >= 3
+assert all("winner" in m and "loser" in m for m in first_round)
+print("  ✅ route_tournament: bracket structure")
+t_passed += 1
+
+t_total += 1
+tour1 = t_r.route_tournament("Fix the bug", rounds=1)
+assert tour1["rounds_played"] == 1
+print("  ✅ route_tournament: rounds limit")
+t_passed += 1
+
+t_total += 1
+tour_e = PromptRouter([]).route_tournament("test")
+assert tour_e["champion"] is None
+assert tour_e["rounds_played"] == 0
+print("  ✅ route_tournament: empty router")
+t_passed += 1
+
+t_total += 1
+tour_s = PromptRouter([DEFAULT_AGENTS[0]]).route_tournament("test")
+assert tour_s["champion"] == DEFAULT_AGENTS[0].name
+assert tour_s["rounds_played"] == 0
+print("  ✅ route_tournament: single agent")
+t_passed += 1
+
+t_total += 1
+tour_odd = PromptRouter(DEFAULT_AGENTS[:5]).route_tournament("Fix bug")
+assert tour_odd["champion"] is not None
+first = tour_odd["bracket"][0]
+bye_matches = [m for m in first if m["loser"] is None]
+assert len(bye_matches) == 1
+print("  ✅ route_tournament: bye handling")
+t_passed += 1
+
+print(f"\n{t_passed}/{t_total} route_tournament tests passed")
+total_passed += t_passed
+total_tests += t_total
+
+# ========== agent_similarity tests ==========
+sim_total = 0
+sim_passed = 0
+sim_r = PromptRouter()
+
+sim_total += 1
+sim = sim_r.agent_similarity("coder", "researcher")
+assert "jaccard" in sim
+assert 0.0 <= sim["jaccard"] <= 1.0
+assert "shared_keywords" in sim
+assert "overlap_count" in sim
+print("  ✅ agent_similarity: basic metrics")
+sim_passed += 1
+
+sim_total += 1
+sim_self = sim_r.agent_similarity("coder", "coder")
+assert sim_self["jaccard"] == 1.0
+assert sim_self["overlap_count"] == len(sim_r.agents[0].keywords)
+print("  ✅ agent_similarity: self = 1.0")
+sim_passed += 1
+
+sim_total += 1
+custom_a = Agent("xa", "a", keywords=["alpha", "beta"])
+custom_b = Agent("xb", "b", keywords=["gamma", "delta"])
+sim_r2 = PromptRouter([custom_a, custom_b])
+sim_diff = sim_r2.agent_similarity("xa", "xb")
+assert sim_diff["jaccard"] == 0.0
+assert sim_diff["shared_keywords"] == []
+print("  ✅ agent_similarity: no overlap = 0.0")
+sim_passed += 1
+
+sim_total += 1
+sim_none = sim_r.agent_similarity("coder", "nonexistent")
+assert sim_none == {}
+print("  ✅ agent_similarity: missing agent")
+sim_passed += 1
+
+sim_total += 1
+sim5 = sim_r.agent_similarity("coder", "reviewer")
+assert len(sim5["unique_to_a"]) > 0 or len(sim5["unique_to_b"]) > 0
+print("  ✅ agent_similarity: unique keywords")
+sim_passed += 1
+
+print(f"\n{sim_passed}/{sim_total} agent_similarity tests passed")
+total_passed += sim_passed
+total_tests += sim_total
+
+# ========== route_weighted_vote tests ==========
+v_total = 0
+v_passed = 0
+v_r = PromptRouter()
+
+v_total += 1
+vote = v_r.route_weighted_vote("Fix the login bug")
+assert vote["winner"] == "coder", f"expected coder, got {vote['winner']}"
+assert "tally" in vote
+assert len(vote["votes"]) > 0
+print("  ✅ route_weighted_vote: basic vote")
+v_passed += 1
+
+v_total += 1
+vote4 = v_r.route_weighted_vote("Fix the bug", strategies=["score", "top_k", "diversity", "priority"])
+assert len(vote4["votes"]) == 4
+assert len(vote4["strategies_used"]) == 4
+print("  ✅ route_weighted_vote: all strategies")
+v_passed += 1
+
+v_total += 1
+vote_bias = v_r.route_weighted_vote("Summarize data", strategies=["score", "top_k"],
+                                        weights={"score": 5.0, "top_k": 0.1})
+assert vote_bias["tally"]
+print("  ✅ route_weighted_vote: custom weights")
+v_passed += 1
+
+v_total += 1
+vote_e = PromptRouter([]).route_weighted_vote("test")
+assert "winner" in vote_e
+print("  ✅ route_weighted_vote: empty router")
+v_passed += 1
+
+v_total += 1
+vote5 = v_r.route_weighted_vote("Fix bug")
+tally_values = list(vote5["tally"].values())
+assert tally_values == sorted(tally_values, reverse=True)
+print("  ✅ route_weighted_vote: tally sorted")
+v_passed += 1
+
+v_total += 1
+vote_unk = v_r.route_weighted_vote("Fix bug", strategies=["score", "nonexistent_strategy"])
+assert len(vote_unk["votes"]) == 1
+print("  ✅ route_weighted_vote: unknown strategy skipped")
+v_passed += 1
+
+print(f"\n{v_passed}/{v_total} route_weighted_vote tests passed")
+total_passed += v_passed
+total_tests += v_total
+
+# ========== export_report tests ==========
+rep_total = 0
+rep_passed = 0
+rep_r = PromptRouter()
+
+rep_total += 1
+report = rep_r.export_report(["Fix bug", "Research AI", "Write docs"])
+assert report["total_prompts"] == 3
+assert len(report["per_prompt"]) == 3
+assert "agent_coverage" in report
+assert "confidence_distribution" in report
+assert "diversity_score" in report
+print("  ✅ export_report: basic structure")
+rep_passed += 1
+
+rep_total += 1
+assert sum(report["agent_coverage"].values()) == 3
+print("  ✅ export_report: coverage sums correctly")
+rep_passed += 1
+
+rep_total += 1
+assert sum(report["confidence_distribution"].values()) == 3
+print("  ✅ export_report: confidence sums correctly")
+rep_passed += 1
+
+rep_total += 1
+assert 0.0 <= report["diversity_score"] <= 1.0
+print("  ✅ export_report: diversity score range")
+rep_passed += 1
+
+rep_total += 1
+tmpf = os.path.join(tempfile.gettempdir(), "test_report.json")
+report2 = rep_r.export_report(["Fix bug"], path=tmpf)
+assert os.path.exists(tmpf)
+with open(tmpf) as f:
+    loaded = json.load(f)
+assert loaded["total_prompts"] == 1
+os.unlink(tmpf)
+print("  ✅ export_report: file export")
+rep_passed += 1
+
+rep_total += 1
+report_e = rep_r.export_report([])
+assert report_e["total_prompts"] == 0
+assert report_e["per_prompt"] == []
+assert report_e["diversity_score"] == 0.0
+print("  ✅ export_report: empty prompts")
+rep_passed += 1
+
+rep_total += 1
+keys = set(report["per_prompt"][0].keys())
+assert keys == {"prompt", "agent", "score", "confidence"}
+print("  ✅ export_report: per_prompt keys")
+rep_passed += 1
+
+print(f"\n{rep_passed}/{rep_total} export_report tests passed")
+total_passed += rep_passed
+total_tests += rep_total
+
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")

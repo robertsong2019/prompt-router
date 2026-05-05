@@ -822,6 +822,189 @@ class PromptRouter:
             "rankings": rankings,
         }
 
+    def route_tournament(self, prompt: str, rounds: int = 0) -> dict:
+        """Bracket-style elimination routing.
+        Agents compete in pairs; winner advances. Continues until one champion remains.
+        rounds: if > 0, limits bracket rounds (e.g. 1 = just one comparison).
+                if 0, runs full elimination.
+        Returns dict with 'champion', 'final_score', 'bracket' (list of rounds),
+        and 'rounds_played'.
+        """
+        import math as _math
+
+        if not self.agents:
+            return {"champion": None, "final_score": 0.0, "bracket": [], "rounds_played": 0}
+
+        # Seed: sort agents by base priority for consistent bracket
+        seeds = sorted(self.agents, key=lambda a: a.priority, reverse=True)
+        scores = {a.name: a.score(prompt) for a in seeds}
+
+        bracket = []
+        current = list(seeds)
+        rounds_played = 0
+        max_rounds = rounds if rounds > 0 else 999
+
+        while len(current) > 1 and rounds_played < max_rounds:
+            next_round = []
+            round_matches = []
+            i = 0
+            while i + 1 < len(current):
+                a, b = current[i], current[i + 1]
+                sa, sb = scores[a.name], scores[b.name]
+                winner = a if sa >= sb else b
+                loser = b if sa >= sb else a
+                round_matches.append({
+                    "match": f"{a.name} vs {b.name}",
+                    "scores": {a.name: round(sa, 4), b.name: round(sb, 4)},
+                    "winner": winner.name,
+                    "loser": loser.name,
+                })
+                next_round.append(winner)
+                i += 2
+            # Odd agent gets a bye
+            if i < len(current):
+                bye = current[i]
+                round_matches.append({
+                    "match": f"{bye.name} (bye)",
+                    "scores": {bye.name: round(scores[bye.name], 4)},
+                    "winner": bye.name,
+                    "loser": None,
+                })
+                next_round.append(bye)
+            bracket.append(round_matches)
+            current = next_round
+            rounds_played += 1
+
+        champion = current[0] if current else None
+        return {
+            "champion": champion.name if champion else None,
+            "final_score": round(scores[champion.name], 4) if champion else 0.0,
+            "bracket": bracket,
+            "rounds_played": rounds_played,
+        }
+
+    def agent_similarity(self, name_a: str, name_b: str) -> dict:
+        """Measure keyword overlap between two agents.
+        Returns dict with 'jaccard' (intersection/union), 'overlap_count',
+        'shared_keywords', and 'unique_to_a'/'unique_to_b'.
+        Agent not found → empty dict.
+        """
+        a = next((x for x in self.agents if x.name == name_a), None)
+        b = next((x for x in self.agents if x.name == name_b), None)
+        if not a or not b:
+            return {}
+
+        set_a = {k.lower() for k in a.keywords}
+        set_b = {k.lower() for k in b.keywords}
+        shared = set_a & set_b
+        union = set_a | set_b
+        jaccard = len(shared) / len(union) if union else 0.0
+
+        return {
+            "jaccard": round(jaccard, 4),
+            "overlap_count": len(shared),
+            "shared_keywords": sorted(shared),
+            "unique_to_a": sorted(set_a - set_b),
+            "unique_to_b": sorted(set_b - set_a),
+        }
+
+    def route_weighted_vote(self, prompt: str,
+                              strategies: Optional[list[str]] = None,
+                              weights: Optional[dict[str, float]] = None) -> dict:
+        """Multi-strategy voting ensemble for routing.
+        Each strategy votes for its top agent. Votes are weighted and tallied.
+        Built-in strategies: 'score', 'top_k', 'diversity', 'priority'.
+        Returns dict with 'winner', 'tally', 'votes', 'strategies_used'.
+        """
+        if strategies is None:
+            strategies = ["score", "top_k"]
+        if weights is None:
+            weights = {s: 1.0 for s in strategies}
+
+        tally: dict[str, float] = {}
+        votes = []
+
+        for strat in strategies:
+            w = weights.get(strat, 1.0)
+            if strat == "score":
+                agent, score, _ = self.route(prompt)
+                tally[agent] = tally.get(agent, 0) + w
+                votes.append({"strategy": "score", "agent": agent, "score": round(score, 4), "weight": w})
+            elif strat == "top_k":
+                top = self.route_top_k(prompt, k=1)
+                if top:
+                    a = top[0]["agent"]
+                    tally[a] = tally.get(a, 0) + w
+                    votes.append({"strategy": "top_k", "agent": a, "weight": w})
+            elif strat == "diversity":
+                div = self.route_with_diversity(prompt)
+                a = div["agent"]
+                tally[a] = tally.get(a, 0) + w
+                votes.append({"strategy": "diversity", "agent": a, "weight": w})
+            elif strat == "priority":
+                pri = self.route_by_priority(prompt)
+                a = pri["agent"]
+                tally[a] = tally.get(a, 0) + w
+                votes.append({"strategy": "priority", "agent": a, "weight": w})
+
+        if not tally:
+            # Fallback
+            agent, _, _ = self.route(prompt)
+            tally[agent] = 1.0
+
+        winner = max(tally, key=tally.get)  # type: ignore[arg-type]
+        return {
+            "winner": winner,
+            "tally": {k: round(v, 4) for k, v in sorted(tally.items(), key=lambda x: -x[1])},
+            "votes": votes,
+            "strategies_used": strategies,
+        }
+
+    def export_report(self, prompts: list[str], path: Optional[str] = None) -> dict:
+        """Generate a routing analysis report for a set of prompts.
+        Includes per-prompt routing, score matrix summary, agent coverage,
+        confidence distribution, and diversity score.
+        If path is given, writes JSON report to file.
+        Returns the report dict.
+        """
+        report = {
+            "total_prompts": len(prompts),
+            "agents": [a.name for a in self.agents],
+            "per_prompt": [],
+            "agent_coverage": {},
+            "confidence_distribution": {"confident": 0, "low_confidence": 0, "no_match": 0},
+        }
+
+        for p in prompts:
+            agent, score, _ = self.route(p)
+            _, conf_score, status = self.route_with_confidence(p)
+            report["per_prompt"].append({
+                "prompt": p,
+                "agent": agent,
+                "score": round(score, 4),
+                "confidence": status,
+            })
+            report["agent_coverage"][agent] = report["agent_coverage"].get(agent, 0) + 1
+            report["confidence_distribution"][status] += 1
+
+        # Diversity: how evenly are agents used (entropy-based)
+        import math as _math
+        total = len(prompts) or 1
+        counts = list(report["agent_coverage"].values())
+        if counts:
+            probs = [c / total for c in counts]
+            entropy = -sum(p * _math.log2(p) for p in probs if p > 0)
+            max_entropy = _math.log2(len(self.agents)) if len(self.agents) > 1 else 1.0
+            report["diversity_score"] = round(entropy / max_entropy, 4) if max_entropy > 0 else 0.0
+        else:
+            report["diversity_score"] = 0.0
+
+        if path:
+            with open(path, "w") as f:
+                json.dump(report, f, indent=2)
+
+        return report
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""
