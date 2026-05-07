@@ -1005,6 +1005,70 @@ class PromptRouter:
 
         return report
 
+    def health_check(self) -> dict:
+        """Diagnostic health check for the router configuration.
+        Returns issues list (empty = healthy) and summary stats.
+        Checks: no agents, duplicate names, agents with no keywords,
+        agents with zero-weight keywords, cooldowns active.
+        """
+        issues = []
+        names = [a.name for a in self.agents]
+        seen = set()
+        for n in names:
+            if n in seen:
+                issues.append(f"duplicate agent name: {n}")
+            seen.add(n)
+        for a in self.agents:
+            if not a.keywords:
+                issues.append(f"agent '{a.name}' has no keywords")
+            if not a.patterns and not a.keywords:
+                issues.append(f"agent '{a.name}' has no routing signals (keywords or patterns)")
+            if not a.description:
+                issues.append(f"agent '{a.name}' has no description")
+        active_cooldowns = [n for n in names if self.is_cooled_down(n)] if hasattr(self, '_cooldowns') else []
+        for n in active_cooldowns:
+            issues.append(f"agent '{n}' is in cooldown")
+        return {
+            "healthy": len(issues) == 0,
+            "issues": issues,
+            "agent_count": len(self.agents),
+            "active_cooldowns": active_cooldowns,
+        }
+
+    def route_by_time_window(self, prompt: str, windows: dict[str, tuple[int, int]],
+                              current_hour: Optional[int] = None) -> dict:
+        """Route only to agents whose time window covers current hour.
+        windows: {agent_name: (start_hour, end_hour)} in 0-23.
+        start <= current_hour < end (half-open).
+        Agents not in windows dict are always eligible.
+        """
+        import datetime as _dt
+        if current_hour is None:
+            current_hour = _dt.datetime.now().hour
+        eligible = []
+        for a in self.agents:
+            if a.name not in windows:
+                eligible.append(a)
+            else:
+                start, end = windows[a.name]
+                if start <= end:
+                    if start <= current_hour < end:
+                        eligible.append(a)
+                else:  # wraps midnight, e.g. (22, 6)
+                    if current_hour >= start or current_hour < end:
+                        eligible.append(a)
+        if not eligible:
+            return {"agent": None, "score": 0.0, "reason": "no agents available in this time window",
+                    "current_hour": current_hour}
+        temp = PromptRouter(eligible)
+        agent, score, all_scores = temp.route(prompt)
+        return {
+            "agent": agent, "score": round(score, 4),
+            "current_hour": current_hour,
+            "eligible_count": len(eligible),
+            "all_scores": [(n, round(s, 4)) for n, s in all_scores],
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

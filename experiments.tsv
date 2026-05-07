@@ -16,3 +16,4 @@ timestamp	commit	metric	value	status	description
 2026-05-03T19:20	6ffd60b	test_count	94	keep	route_by_capability(any/all/best) + agent_stats(), 10 new tests
 2026-05-04T19:10	e62c3be	test_count	111	keep	route_with_diversity + deduplicate_agents + route_by_regex, 17 new tests
 2026-05-05T19:10	83b094d	test_count	111→124	keep	cooldown mechanism + route_by_priority with boost/decay: +13 tests
+2026-05-05T21:10	1ffc235	test_count	124→148	keep	route_tournament(bracket elimination) + agent_similarity(Jaccard overlap) + route_weighted_vote(multi-strategy ensemble) + export_report(analysis with diversity score): +24 tests

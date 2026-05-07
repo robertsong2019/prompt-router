@@ -1319,4 +1319,122 @@ print(f"\n{rep_passed}/{rep_total} export_report tests passed")
 total_passed += rep_passed
 total_tests += rep_total
 
+# ============================================================
+# health_check tests
+# ============================================================
+hc_passed = 0
+hc_total = 0
+
+hc_total += 1
+hc_r = PromptRouter(DEFAULT_AGENTS)
+result = hc_r.health_check()
+assert result["healthy"] is True
+assert result["issues"] == []
+assert result["agent_count"] == len(DEFAULT_AGENTS)
+print("  ✅ health_check: healthy router")
+hc_passed += 1
+
+hc_total += 1
+hc_bad = PromptRouter([Agent("dup", "a", keywords=["x"]), Agent("dup", "b", keywords=["y"])])
+result = hc_bad.health_check()
+assert not result["healthy"]
+assert any("duplicate" in i for i in result["issues"])
+print("  ✅ health_check: detects duplicate names")
+hc_passed += 1
+
+hc_total += 1
+hc_no_kw = PromptRouter([Agent("empty", "", keywords=[])])
+result = hc_no_kw.health_check()
+assert not result["healthy"]
+assert any("no keywords" in i for i in result["issues"])
+assert any("no description" in i for i in result["issues"])
+print("  ✅ health_check: detects no-keyword and no-description agents")
+hc_passed += 1
+
+hc_total += 1
+hc_zero = PromptRouter([Agent("zero", "", keywords=[], patterns=[])])
+result = hc_zero.health_check()
+assert not result["healthy"]
+assert any("no routing signals" in i for i in result["issues"])
+print("  ✅ health_check: detects agents with no routing signals")
+hc_passed += 1
+
+hc_total += 1
+hc_empty = PromptRouter([])
+result = hc_empty.health_check()
+assert result["healthy"] is True  # no agents = no issues
+assert result["agent_count"] == 0
+print("  ✅ health_check: empty router")
+hc_passed += 1
+
+hc_total += 1
+hc_cd = PromptRouter(DEFAULT_AGENTS)
+hc_cd.cooldown(DEFAULT_AGENTS[0].name, seconds=9999)
+result = hc_cd.health_check()
+assert not result["healthy"]
+assert any("cooldown" in i for i in result["issues"])
+print("  ✅ health_check: detects active cooldowns")
+hc_passed += 1
+
+print(f"\n{hc_passed}/{hc_total} health_check tests passed")
+total_passed += hc_passed
+total_tests += hc_total
+
+# ============================================================
+# route_by_time_window tests
+# ============================================================
+tw_passed = 0
+tw_total = 0
+
+tw_total += 1
+tw_r = PromptRouter(DEFAULT_AGENTS)
+result = tw_r.route_by_time_window("Write a function", {"coder": (9, 17)}, current_hour=12)
+assert result["agent"] is not None
+assert result["current_hour"] == 12
+assert result["eligible_count"] == len(DEFAULT_AGENTS)  # all eligible at noon
+print("  ✅ route_by_time_window: agent in active window")
+tw_passed += 1
+
+tw_total += 1
+result2 = tw_r.route_by_time_window("Write a function", {"coder": (9, 17)}, current_hour=22)
+# coder excluded at 22h, other agents still eligible
+assert result2["agent"] is not None
+assert result2["eligible_count"] == len(DEFAULT_AGENTS) - 1
+print("  ✅ route_by_time_window: agent excluded outside window")
+tw_passed += 1
+
+tw_total += 1
+# Wrap-around window: (22, 6) covers 22,23,0,1,2,3,4,5
+result3 = tw_r.route_by_time_window("Debug this", {"reviewer": (22, 6)}, current_hour=3)
+assert result3["agent"] is not None
+print("  ✅ route_by_time_window: wrap-around midnight")
+tw_passed += 1
+
+tw_total += 1
+result4 = tw_r.route_by_time_window("Debug this", {"reviewer": (22, 6)}, current_hour=12)
+assert result4["eligible_count"] == len(DEFAULT_AGENTS) - 1
+print("  ✅ route_by_time_window: wrap-around excludes midday")
+tw_passed += 1
+
+tw_total += 1
+# All agents in windows, none match → no agents available
+tw_single = PromptRouter([Agent("only", "only agent", keywords=["x"])])
+result5 = tw_single.route_by_time_window("test", {"only": (9, 17)}, current_hour=22)
+assert result5["agent"] is None
+assert result5["reason"] == "no agents available in this time window"
+print("  ✅ route_by_time_window: no eligible agents returns None")
+tw_passed += 1
+
+tw_total += 1
+# Agents not in windows dict are always eligible
+result6 = tw_r.route_by_time_window("Write code", {}, current_hour=5)
+assert result6["agent"] is not None
+assert result6["eligible_count"] == len(DEFAULT_AGENTS)
+print("  ✅ route_by_time_window: empty windows includes all")
+tw_passed += 1
+
+print(f"\n{tw_passed}/{tw_total} route_by_time_window tests passed")
+total_passed += tw_passed
+total_tests += tw_total
+
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
