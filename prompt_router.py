@@ -1164,6 +1164,60 @@ class PromptRouter:
             "by_agent": by_agent,
         }
 
+    def route_negotiation(self, prompt: str, top_k: int = 3) -> dict:
+        """Two-phase negotiation routing for ambiguous prompts.
+        Phase 1: Score all agents, pick top-K candidates.
+        Phase 2: Among candidates, re-score with tiebreaker heuristics
+        (description overlap, specificity = fewer keywords = more specialized).
+        Returns dict with 'winner', 'candidates', 'phase1_scores', 'phase2_scores',
+        'negotiated' (True if winner changed from phase 1 to phase 2).
+        """
+        # Phase 1: standard scoring
+        all_scored = []
+        for a in self.agents:
+            s, reasons = a.score(prompt, detail=True)
+            all_scored.append((a.name, s, reasons))
+        all_scored.sort(key=lambda x: x[1], reverse=True)
+
+        candidates = all_scored[:top_k]
+        phase1_winner = candidates[0][0] if candidates else None
+
+        # Phase 2: re-score with tiebreakers
+        prompt_words = set(re.findall(r'\w+', prompt.lower()))
+        phase2 = []
+        for name, base_score, reasons in candidates:
+            agent = next(a for a in self.agents if a.name == name)
+            # Description overlap bonus
+            desc_words = set(re.findall(r'\w+', agent.description.lower()))
+            desc_overlap = len(prompt_words & desc_words) * 0.3
+            # Specificity bonus: fewer keywords = more specialized = higher bonus
+            specificity = 1.0 / max(len(agent.keywords), 1)
+            specificity_bonus = specificity * 0.2 if base_score > 0 else 0
+            # Pattern match bonus
+            pattern_hits = sum(len(re.findall(p, prompt, re.IGNORECASE)) for p in agent.patterns)
+            pattern_bonus = pattern_hits * 0.15
+
+            final = base_score + desc_overlap + specificity_bonus + pattern_bonus
+            phase2.append({
+                "agent": name,
+                "base_score": round(base_score, 4),
+                "desc_overlap": round(desc_overlap, 4),
+                "specificity_bonus": round(specificity_bonus, 4),
+                "pattern_bonus": round(pattern_bonus, 4),
+                "final_score": round(final, 4),
+            })
+
+        phase2.sort(key=lambda x: x["final_score"], reverse=True)
+        winner = phase2[0]["agent"] if phase2 else None
+
+        return {
+            "winner": winner,
+            "candidates": [c["agent"] for c in phase2],
+            "phase1_scores": [(n, round(s, 4)) for n, s, _ in all_scored],
+            "phase2_scores": phase2,
+            "negotiated": winner != phase1_winner,
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

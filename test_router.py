@@ -1603,4 +1603,74 @@ print(f"\n{si_passed}/{si_total} suggest_improvements tests passed")
 total_passed += si_passed
 total_tests += si_total
 
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed" if total_tests else "")
+
+# ============================================================
+# route_negotiation tests
+# ============================================================
+neg_r = PromptRouter()
+neg_passed = 0
+neg_total = 0
+
+neg_total += 1
+neg_result = neg_r.route_negotiation("Fix the authentication bug in login.py")
+assert neg_result["winner"] is not None
+assert isinstance(neg_result["candidates"], list)
+assert isinstance(neg_result["phase1_scores"], list)
+assert isinstance(neg_result["phase2_scores"], list)
+assert isinstance(neg_result["negotiated"], bool)
+print("  ✅ route_negotiation: basic structure")
+neg_passed += 1
+
+neg_total += 1
+# winner is one of the candidates
+assert neg_result["winner"] in neg_result["candidates"]
+print("  ✅ route_negotiation: winner is a candidate")
+neg_passed += 1
+
+neg_total += 1
+# phase2 scores have expected keys
+p2 = neg_result["phase2_scores"][0]
+assert "base_score" in p2 and "desc_overlap" in p2
+assert "specificity_bonus" in p2 and "pattern_bonus" in p2
+assert "final_score" in p2
+print("  ✅ route_negotiation: phase2 score breakdown")
+neg_passed += 1
+
+neg_total += 1
+# top_k limits candidates
+neg_k2 = neg_r.route_negotiation("Write a blog post", top_k=2)
+assert len(neg_k2["candidates"]) <= 2
+assert len(neg_k2["phase2_scores"]) <= 2
+print("  ✅ route_negotiation: top_k limits candidates")
+neg_passed += 1
+
+neg_total += 1
+# negotiated=True when phase2 changes winner (hard to guarantee, so test structure)
+# At minimum, negotiated is a boolean
+assert isinstance(neg_result["negotiated"], bool)
+print("  ✅ route_negotiation: negotiated flag type")
+neg_passed += 1
+
+neg_total += 1
+# empty router
+neg_empty_r = PromptRouter([])
+neg_empty = neg_empty_r.route_negotiation("hello")
+assert neg_empty["winner"] is None
+assert neg_empty["candidates"] == []
+print("  ✅ route_negotiation: empty router")
+neg_passed += 1
+
+neg_total += 1
+# phase1_scores covers all agents
+assert len(neg_result["phase1_scores"]) == len(neg_r.agents)
+for name, score in neg_result["phase1_scores"]:
+    assert isinstance(name, str) and isinstance(score, (int, float))
+print("  ✅ route_negotiation: phase1_scores completeness")
+neg_passed += 1
+
+print(f"\n{neg_passed}/{neg_total} route_negotiation tests passed")
+total_passed += neg_passed
+total_tests += neg_total
+
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
