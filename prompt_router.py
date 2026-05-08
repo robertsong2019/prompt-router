@@ -1069,6 +1069,101 @@ class PromptRouter:
             "all_scores": [(n, round(s, 4)) for n, s in all_scores],
         }
 
+    def cross_validate(self, test_cases: list[tuple[str, str]]) -> dict:
+        """Evaluate routing accuracy against labeled test data.
+        
+        Args:
+            test_cases: list of (prompt, expected_agent) tuples.
+        
+        Returns dict with accuracy, per_agent metrics, confusion matrix.
+        """
+        if not test_cases:
+            return {"total": 0, "correct": 0, "accuracy": 0.0,
+                    "per_agent": {}, "confusion_matrix": {}, "errors": []}
+
+        correct = 0
+        errors = []
+        agent_names = [a.name for a in self.agents]
+        # confusion_matrix[predicted][actual] = count
+        confusion: dict[str, dict[str, int]] = {p: {a: 0 for a in agent_names} for p in agent_names}
+        per_agent: dict[str, dict] = {a: {"tp": 0, "fp": 0, "fn": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0}
+                                       for a in agent_names}
+
+        for prompt, expected in test_cases:
+            predicted, score, _ = self.route(prompt)
+            if expected in confusion.get(predicted, {}):
+                confusion[predicted][expected] += 1
+            if predicted == expected:
+                correct += 1
+                if expected in per_agent:
+                    per_agent[expected]["tp"] += 1
+            else:
+                errors.append({"prompt": prompt, "expected": expected, "predicted": predicted, "score": round(score, 4)})
+                if predicted in per_agent:
+                    per_agent[predicted]["fp"] += 1
+                if expected in per_agent:
+                    per_agent[expected]["fn"] += 1
+
+        # compute precision/recall/f1
+        for name, m in per_agent.items():
+            m["precision"] = round(m["tp"] / (m["tp"] + m["fp"]), 4) if (m["tp"] + m["fp"]) > 0 else 0.0
+            m["recall"] = round(m["tp"] / (m["tp"] + m["fn"]), 4) if (m["tp"] + m["fn"]) > 0 else 0.0
+            m["f1"] = round(2 * m["precision"] * m["recall"] / (m["precision"] + m["recall"]), 4) \
+                if (m["precision"] + m["recall"]) > 0 else 0.0
+
+        return {
+            "total": len(test_cases),
+            "correct": correct,
+            "accuracy": round(correct / len(test_cases), 4),
+            "per_agent": per_agent,
+            "confusion_matrix": confusion,
+            "errors": errors,
+        }
+
+    def suggest_improvements(self, test_cases: list[tuple[str, str]], top_k: int = 5) -> dict:
+        """Analyze misclassified prompts and suggest keyword improvements.
+        
+        Args:
+            test_cases: labeled (prompt, expected_agent) data.
+            top_k: max suggestions per agent.
+        
+        Returns suggestions for underperforming agents.
+        """
+        cv = self.cross_validate(test_cases)
+        if cv["accuracy"] == 1.0:
+            return {"accuracy": 1.0, "suggestions": [], "message": "Perfect accuracy, no improvements needed."}
+
+        suggestions = []
+        agent_keywords = {a.name: set(kw.lower() for kw in a.keywords) for a in self.agents}
+
+        for error in cv["errors"]:
+            prompt_words = set(re.findall(r'\w+', error["prompt"].lower()))
+            expected = error["expected"]
+            # words not in expected agent's keywords that could help
+            if expected in agent_keywords:
+                missing = prompt_words - agent_keywords[expected]
+                # filter short/generic words
+                useful = [w for w in missing if len(w) >= 4]
+                if useful:
+                    suggestions.append({
+                        "agent": expected,
+                        "misclassified_as": error["predicted"],
+                        "prompt": error["prompt"],
+                        "suggested_keywords": useful[:top_k],
+                    })
+
+        # aggregate by agent
+        by_agent: dict[str, list] = {}
+        for s in suggestions:
+            by_agent.setdefault(s["agent"], []).append(s)
+
+        return {
+            "accuracy": cv["accuracy"],
+            "total_errors": len(cv["errors"]),
+            "suggestions": suggestions,
+            "by_agent": by_agent,
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

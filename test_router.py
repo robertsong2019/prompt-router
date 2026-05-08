@@ -1437,4 +1437,170 @@ print(f"\n{tw_passed}/{tw_total} route_by_time_window tests passed")
 total_passed += tw_passed
 total_tests += tw_total
 
+# ============================================================
+# cross_validate tests
+# ============================================================
+cv_total = 0
+cv_passed = 0
+cv_r = PromptRouter()
+
+cv_total += 1
+cv_result = cv_r.cross_validate([
+    ("Fix the authentication bug", "coder"),
+    ("Summarize the Q4 report", "researcher"),
+    ("Write a blog post about Rust", "writer"),
+])
+assert cv_result["total"] == 3
+assert cv_result["correct"] >= 2  # most should match
+assert 0.0 < cv_result["accuracy"] <= 1.0
+assert len(cv_result["errors"]) == 3 - cv_result["correct"]
+assert "per_agent" in cv_result
+assert "confusion_matrix" in cv_result
+print("  ✅ cross_validate: basic evaluation")
+cv_passed += 1
+
+cv_total += 1
+cv_empty = cv_r.cross_validate([])
+assert cv_empty["total"] == 0
+assert cv_empty["accuracy"] == 0.0
+assert cv_empty["errors"] == []
+print("  ✅ cross_validate: empty test cases")
+cv_passed += 1
+
+cv_total += 1
+# 100% accuracy on strong matches
+cv_perfect = cv_r.cross_validate([
+    ("Fix the login bug", "coder"),
+    ("Fix the compile error", "coder"),
+])
+assert cv_perfect["accuracy"] == 1.0
+assert cv_perfect["errors"] == []
+print("  ✅ cross_validate: perfect accuracy")
+cv_passed += 1
+
+cv_total += 1
+# per_agent has precision/recall/f1
+for agent_name, metrics in cv_result["per_agent"].items():
+    assert "precision" in metrics
+    assert "recall" in metrics
+    assert "f1" in metrics
+    assert 0.0 <= metrics["precision"] <= 1.0
+    assert 0.0 <= metrics["recall"] <= 1.0
+    assert 0.0 <= metrics["f1"] <= 1.0
+print("  ✅ cross_validate: per_agent precision/recall/f1")
+cv_passed += 1
+
+cv_total += 1
+# confusion matrix dimensions
+agent_names = [a.name for a in cv_r.agents]
+for pred in agent_names:
+    assert pred in cv_result["confusion_matrix"]
+    for actual in agent_names:
+        assert actual in cv_result["confusion_matrix"][pred]
+print("  ✅ cross_validate: confusion matrix dimensions")
+cv_passed += 1
+
+cv_total += 1
+# errors have correct structure
+cv_mixed = cv_r.cross_validate([
+    ("Fix the bug", "coder"),
+    ("xyzzy plugh", "researcher"),  # likely misclassified
+])
+if cv_mixed["errors"]:
+    err = cv_mixed["errors"][0]
+    assert "prompt" in err and "expected" in err and "predicted" in err and "score" in err
+print("  ✅ cross_validate: error structure")
+cv_passed += 1
+
+cv_total += 1
+# tp+fp+fn are non-negative integers
+for name, m in cv_result["per_agent"].items():
+    assert m["tp"] >= 0 and m["fp"] >= 0 and m["fn"] >= 0
+print("  ✅ cross_validate: tp/fp/fn non-negative")
+cv_passed += 1
+
+cv_total += 1
+# empty router cross_validate
+cv_er = PromptRouter([])
+cv_er_result = cv_er.cross_validate([("test", "nonexistent_agent")])
+assert cv_er_result["total"] == 1
+assert cv_er_result["accuracy"] < 1.0  # can't match nonexistent agent
+print("  ✅ cross_validate: empty router")
+cv_passed += 1
+
+print(f"\n{cv_passed}/{cv_total} cross_validate tests passed")
+total_passed += cv_passed
+total_tests += cv_total
+
+# ============================================================
+# suggest_improvements tests
+# ============================================================
+si_total = 0
+si_passed = 0
+si_r = PromptRouter()
+
+si_total += 1
+# perfect accuracy = no suggestions
+si_perfect = si_r.suggest_improvements([
+    ("Fix the login bug", "coder"),
+    ("Fix the compile error", "coder"),
+])
+assert si_perfect["accuracy"] == 1.0
+assert si_perfect["suggestions"] == []
+print("  ✅ suggest_improvements: perfect accuracy, no suggestions")
+si_passed += 1
+
+si_total += 1
+# imperfect = suggestions generated
+si_bad = si_r.suggest_improvements([
+    ("Translate English to French", "translator"),
+    ("Fix the login bug", "coder"),
+    ("xyzzy plugh foobar", "researcher"),
+])
+assert si_bad["accuracy"] < 1.0
+assert si_bad["total_errors"] > 0
+assert len(si_bad["suggestions"]) > 0
+print("  ✅ suggest_improvements: generates suggestions for errors")
+si_passed += 1
+
+si_total += 1
+# suggestions have correct structure
+if si_bad["suggestions"]:
+    s = si_bad["suggestions"][0]
+    assert "agent" in s and "misclassified_as" in s
+    assert "prompt" in s and "suggested_keywords" in s
+print("  ✅ suggest_improvements: suggestion structure")
+si_passed += 1
+
+si_total += 1
+# by_agent groups correctly
+assert isinstance(si_bad["by_agent"], dict)
+for agent_name, items in si_bad["by_agent"].items():
+    assert isinstance(items, list)
+    for item in items:
+        assert item["agent"] == agent_name
+print("  ✅ suggest_improvements: by_agent grouping")
+si_passed += 1
+
+si_total += 1
+# empty test cases
+si_empty = si_r.suggest_improvements([])
+assert si_empty["accuracy"] == 0.0
+assert si_empty["total_errors"] == 0
+print("  ✅ suggest_improvements: empty input")
+si_passed += 1
+
+si_total += 1
+# suggested_keywords are words from the misclassified prompt
+if si_bad["suggestions"]:
+    for s in si_bad["suggestions"]:
+        for kw in s["suggested_keywords"]:
+            assert len(kw) >= 4, f"keyword too short: {kw}"
+print("  ✅ suggest_improvements: keywords filtered by length")
+si_passed += 1
+
+print(f"\n{si_passed}/{si_total} suggest_improvements tests passed")
+total_passed += si_passed
+total_tests += si_total
+
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
