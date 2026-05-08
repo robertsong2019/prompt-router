@@ -1288,6 +1288,38 @@ class PromptRouter:
             "all_scored": [(n, s) for n, s in scored],
         }
 
+    def learning_stats(self) -> dict:
+        """Return statistics about adaptive learning state.
+        Returns feedback count, accuracy, per-agent priority adjustments.
+        """
+        if not hasattr(self, '_feedback_history'):
+            self._feedback_history = []
+        total = len(self._feedback_history)
+        correct = sum(1 for _, _, ok in self._feedback_history if ok) if total else 0
+        priority_changes = {a.name: round(a.priority, 4) for a in self.agents}
+        return {
+            "total_feedback": total,
+            "correct": correct,
+            "accuracy": round(correct / total, 4) if total else None,
+            "priority_changes": priority_changes,
+        }
+
+    def reset_learning(self, priority: float = 1.0) -> dict:
+        """Reset all adaptive learning state.
+        Clears feedback history and resets agent priorities.
+        Returns dict with 'cleared_feedback' count and 'reset_priorities'.
+        """
+        if not hasattr(self, '_feedback_history'):
+            self._feedback_history = []
+        cleared = len(self._feedback_history)
+        self._feedback_history = []
+        reset = {}
+        for a in self.agents:
+            old = a.priority
+            a.priority = priority
+            reset[a.name] = {"before": round(old, 4), "after": round(priority, 4)}
+        return {"cleared_feedback": cleared, "reset_priorities": reset}
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

@@ -1739,3 +1739,65 @@ total_passed += sent_passed
 total_tests += sent_total
 
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# ============================================================
+# learning_stats + reset_learning tests
+# ============================================================
+learn_r = PromptRouter()
+learn_passed = 0
+learn_total = 0
+
+learn_total += 1
+ls0 = learn_r.learning_stats()
+assert ls0["total_feedback"] == 0
+assert ls0["accuracy"] is None
+assert isinstance(ls0["priority_changes"], dict)
+print("  ✅ learning_stats: initial empty state")
+learn_passed += 1
+
+learn_total += 1
+learn_r.route_adaptive("Fix the bug", correct_agent="coder")
+learn_r.route_adaptive("Write a blog post", correct_agent="writer")
+learn_r.route_adaptive("Explain quantum computing", correct_agent="researcher")
+ls1 = learn_r.learning_stats()
+assert ls1["total_feedback"] == 3
+assert ls1["accuracy"] is not None
+print("  ✅ learning_stats: after feedback")
+learn_passed += 1
+
+learn_total += 1
+reset_result = learn_r.reset_learning()
+assert reset_result["cleared_feedback"] == 3
+assert isinstance(reset_result["reset_priorities"], dict)
+for name, changes in reset_result["reset_priorities"].items():
+    assert changes["after"] == 1.0
+print("  ✅ reset_learning: clears feedback and resets priorities")
+learn_passed += 1
+
+learn_total += 1
+ls2 = learn_r.learning_stats()
+assert ls2["total_feedback"] == 0
+assert ls2["accuracy"] is None
+print("  ✅ reset_learning: stats reflect reset")
+learn_passed += 1
+
+learn_total += 1
+learn_r.route_adaptive("Plan the sprint", correct_agent="planner")
+reset_custom = learn_r.reset_learning(priority=2.0)
+for a in learn_r.agents:
+    assert a.priority == 2.0
+print("  ✅ reset_learning: custom priority")
+learn_passed += 1
+
+learn_total += 1
+ls3 = learn_r.learning_stats()
+for name, pri in ls3["priority_changes"].items():
+    assert pri == 2.0
+print("  ✅ learning_stats: reflects current priorities")
+learn_passed += 1
+
+print(f"\n{learn_passed}/{learn_total} learning tests passed")
+total_passed += learn_passed
+total_tests += learn_total
+
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
