@@ -1218,6 +1218,76 @@ class PromptRouter:
             "negotiated": winner != phase1_winner,
         }
 
+    def route_by_sentiment(self, prompt: str) -> dict:
+        """Classify prompt sentiment/urgency and route accordingly.
+        Detects: urgency (ASAP, urgent, critical), politeness (please, kindly),
+        frustration (broken, broken again, still not working), question vs command.
+        Returns dict with 'agent', 'score', 'sentiment', 'urgency', 'signals'.
+        Sentiment-aware agents: urgent+code → coder(reviewer may be too slow),
+        frustrated → reviewer (for audit), polite_question → researcher.
+        """
+        import re as _re
+        p_lower = prompt.lower()
+
+        signals = {
+            "urgent": bool(_re.search(r'\b(asap|urgent|critical|emergency|immediately|right now)\b', p_lower)),
+            "polite": bool(_re.search(r'\b(please|kindly|could you|would you)\b', p_lower)),
+            "frustrated": bool(_re.search(r'\b(broken|still not|again|keeps failing|sick of|tired of)\b', p_lower)),
+            "question": bool(_re.search(r'\?|\b(how|what|why|when|where)\b', p_lower)),
+            "command": bool(_re.search(r'^(fix|write|create|build|deploy|implement|delete|remove|add)\b', p_lower)),
+        }
+
+        # Count active signals
+        active = [k for k, v in signals.items() if v]
+
+        # Determine sentiment label
+        if signals["urgent"]:
+            sentiment = "urgent"
+        elif signals["frustrated"]:
+            sentiment = "frustrated"
+        elif signals["polite"] and signals["question"]:
+            sentiment = "polite_question"
+        elif signals["question"]:
+            sentiment = "question"
+        elif signals["command"]:
+            sentiment = "command"
+        else:
+            sentiment = "neutral"
+
+        # Sentiment-based agent preferences
+        preference_boost: dict[str, float] = {}
+        if sentiment == "urgent":
+            preference_boost = {"coder": 0.5, "planner": 0.3}
+        elif sentiment == "frustrated":
+            preference_boost = {"reviewer": 0.4, "coder": 0.3}
+        elif sentiment == "polite_question":
+            preference_boost = {"researcher": 0.4, "writer": 0.2}
+        elif sentiment == "question":
+            preference_boost = {"researcher": 0.3}
+        elif sentiment == "command":
+            preference_boost = {"coder": 0.3, "writer": 0.2}
+
+        # Score agents with sentiment boost
+        scored = []
+        for a in self.agents:
+            base = a.score(prompt)
+            boost = preference_boost.get(a.name, 0.0)
+            scored.append((a.name, round(base + boost, 4)))
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        winner = scored[0][0] if scored and scored[0][1] > 0 else self._heuristic_fallback(prompt)
+        winner_score = scored[0][1] if scored else 0.0
+
+        return {
+            "agent": winner,
+            "score": winner_score,
+            "sentiment": sentiment,
+            "urgency": signals["urgent"],
+            "signals": signals,
+            "active_signals": active,
+            "all_scored": [(n, s) for n, s in scored],
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

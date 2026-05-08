@@ -1674,3 +1674,68 @@ total_passed += neg_passed
 total_tests += neg_total
 
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# ============================================================
+# route_by_sentiment tests
+# ============================================================
+sent_r = PromptRouter()
+sent_passed = 0
+sent_total = 0
+
+sent_total += 1
+sent_urgent = sent_r.route_by_sentiment("Fix this critical bug ASAP!")
+assert sent_urgent["sentiment"] == "urgent"
+assert sent_urgent["urgency"] is True
+assert sent_urgent["agent"] is not None
+print("  ✅ route_by_sentiment: urgent detection")
+sent_passed += 1
+
+sent_total += 1
+sent_frustrated = sent_r.route_by_sentiment("This login is broken again, keeps failing")
+assert sent_frustrated["sentiment"] == "frustrated"
+assert "frustrated" in sent_frustrated["active_signals"]
+print("  ✅ route_by_sentiment: frustrated detection")
+sent_passed += 1
+
+sent_total += 1
+sent_polite = sent_r.route_by_sentiment("Could you please explain how this works?")
+assert sent_polite["sentiment"] == "polite_question"
+assert sent_polite["signals"]["polite"] is True
+assert sent_polite["signals"]["question"] is True
+print("  ✅ route_by_sentiment: polite question detection")
+sent_passed += 1
+
+sent_total += 1
+sent_command = sent_r.route_by_sentiment("Write a Python script for backups")
+assert sent_command["sentiment"] == "command"
+assert sent_command["signals"]["command"] is True
+print("  ✅ route_by_sentiment: command detection")
+sent_passed += 1
+
+sent_total += 1
+sent_neutral = sent_r.route_by_sentiment("deploy the service")
+assert sent_neutral["sentiment"] in ("neutral", "command")
+assert "agent" in sent_neutral and "score" in sent_neutral
+print("  ✅ route_by_sentiment: neutral/basic routing")
+sent_passed += 1
+
+sent_total += 1
+# signals structure
+assert isinstance(sent_urgent["signals"], dict)
+for key in ("urgent", "polite", "frustrated", "question", "command"):
+    assert key in sent_urgent["signals"]
+print("  ✅ route_by_sentiment: signals structure")
+sent_passed += 1
+
+sent_total += 1
+# preference boost affects routing
+# Urgent coding prompt should boost coder
+assert sent_urgent["agent"] == "coder"  # urgent + code → coder
+print("  ✅ route_by_sentiment: sentiment-based preference")
+sent_passed += 1
+
+print(f"\n{sent_passed}/{sent_total} route_by_sentiment tests passed")
+total_passed += sent_passed
+total_tests += sent_total
+
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
