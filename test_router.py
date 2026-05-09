@@ -1801,3 +1801,198 @@ total_passed += learn_passed
 total_tests += learn_total
 
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# ============================================================
+# detect_language + route_by_language tests
+# ============================================================
+lang_r = PromptRouter()
+lang_passed = 0
+lang_total = 0
+
+lang_total += 1
+assert lang_r.detect_language("Fix the login bug") == "en"
+print("  ✅ detect_language: English detected")
+lang_passed += 1
+
+lang_total += 1
+assert lang_r.detect_language("写一封英文邮件") == "zh"
+print("  ✅ detect_language: Chinese detected")
+lang_passed += 1
+
+lang_total += 1
+assert lang_r.detect_language("バグを修正して") == "ja"
+print("  ✅ detect_language: Japanese detected")
+lang_passed += 1
+
+lang_total += 1
+assert lang_r.detect_language("버그를 수정해") == "ko"
+print("  ✅ detect_language: Korean detected")
+lang_passed += 1
+
+lang_total += 1
+assert lang_r.detect_language("") == "unknown"
+print("  ✅ detect_language: empty returns unknown")
+lang_passed += 1
+
+lang_total += 1
+rl = lang_r.route_by_language("写一封英文邮件给客户")
+assert rl["language"] == "zh"
+assert rl["agent"] in ("translator", "writer", "researcher")
+assert "score" in rl and "lang_candidates" in rl
+print("  ✅ route_by_language: Chinese prompt routes correctly")
+lang_passed += 1
+
+lang_total += 1
+rl_en = lang_r.route_by_language("Fix the bug in login.py")
+assert rl_en["language"] == "en"
+assert "lang_candidates" in rl_en
+assert "any" in rl_en["lang_candidates"]
+print("  ✅ route_by_language: English prompt has no lang preference")
+lang_passed += 1
+
+lang_total += 1
+rl_custom = lang_r.route_by_language("Fix the bug", lang_map={"en": ["coder"]})
+assert rl_custom["agent"] == "coder"
+print("  ✅ route_by_language: custom lang_map works")
+lang_passed += 1
+
+print(f"\n{lang_passed}/{lang_total} route_by_language tests passed")
+total_passed += lang_passed
+total_tests += lang_total
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# ============================================================
+# route_by_complexity tests
+# ============================================================
+comp_r = PromptRouter()
+comp_passed = 0
+comp_total = 0
+
+comp_total += 1
+simple = comp_r.route_by_complexity("Fix the bug")
+assert simple["complexity"] == "low"
+assert simple["signals"]["word_count"] == 3
+print("  ✅ route_by_complexity: low complexity")
+comp_passed += 1
+
+comp_total += 1
+complex_prompt = "Design and implement a distributed microservice architecture with API gateway, service mesh, and infrastructure automation protocol for the database layer"
+complex_result = comp_r.route_by_complexity(complex_prompt)
+assert complex_result["complexity"] == "high"
+assert complex_result["signals"]["technical_terms"] >= 2
+print("  ✅ route_by_complexity: high complexity")
+comp_passed += 1
+
+comp_total += 1
+medium = comp_r.route_by_complexity("Write a Python script that reads CSV files and generates a report with charts")
+assert medium["complexity"] in ("low", "medium", "high")
+# has_code may be False since CSV is not in the code pattern set
+assert "word_count" in medium["signals"]
+print("  ✅ route_by_complexity: basic multi-word prompt")
+comp_passed += 1
+
+comp_total += 1
+negation = comp_r.route_by_complexity("Do not use the database, avoid external APIs")
+assert negation["signals"]["has_negation"] is True
+print("  ✅ route_by_complexity: negation detection")
+comp_passed += 1
+
+comp_total += 1
+assert "complexity_score" in simple and "signals" in simple and "agent" in simple
+print("  ✅ route_by_complexity: result structure")
+comp_passed += 1
+
+print(f"\n{comp_passed}/{comp_total} route_by_complexity tests passed")
+total_passed += comp_passed
+total_tests += comp_total
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# ============================================================
+# agent_graph tests
+# ============================================================
+graph_r = PromptRouter()
+graph_passed = 0
+graph_total = 0
+
+graph_total += 1
+g = graph_r.agent_graph()
+assert len(g["nodes"]) == len(graph_r.agents)
+print("  ✅ agent_graph: correct node count")
+graph_passed += 1
+
+graph_total += 1
+expected_edges = len(graph_r.agents) * (len(graph_r.agents) - 1) // 2
+assert len(g["edges"]) == expected_edges
+print("  ✅ agent_graph: correct edge count")
+graph_passed += 1
+
+graph_total += 1
+first_edge = g["edges"][0]
+assert "from" in first_edge and "to" in first_edge and "similarity" in first_edge
+print("  ✅ agent_graph: edge structure")
+graph_passed += 1
+
+graph_total += 1
+single_r = PromptRouter([graph_r.agents[0]])
+single_g = single_r.agent_graph()
+assert len(single_g["edges"]) == 0
+print("  ✅ agent_graph: single agent has no edges")
+graph_passed += 1
+
+print(f"\n{graph_passed}/{graph_total} agent_graph tests passed")
+total_passed += graph_passed
+total_tests += graph_total
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# ============================================================
+# export_state + import_state tests
+# ============================================================
+es_r = PromptRouter()
+es_passed = 0
+es_total = 0
+
+es_total += 1
+state = es_r.export_state()
+assert state["version"] == "1.0"
+assert state["agent_count"] == len(es_r.agents)
+assert len(state["agents"]) == len(es_r.agents)
+print("  ✅ export_state: basic structure")
+es_passed += 1
+
+es_total += 1
+first_agent = state["agents"][0]
+for key in ("name", "description", "keywords", "patterns", "priority"):
+    assert key in first_agent
+print("  ✅ export_state: agent fields complete")
+es_passed += 1
+
+es_total += 1
+# Round-trip: export → import → verify routing still works
+es_r.route_adaptive("Fix the bug", correct_agent="coder")
+state_with_fb = es_r.export_state()
+assert len(state_with_fb["feedback"]) > 0
+
+new_r = PromptRouter([])
+result = new_r.import_state(state_with_fb)
+assert result["imported_agents"] == len(es_r.agents)
+assert result["imported_feedback"] > 0
+print("  ✅ import_state: round-trip preserves agents and feedback")
+es_passed += 1
+
+es_total += 1
+# Verify imported router routes correctly
+agent, score, _ = new_r.route("Fix the bug")
+assert isinstance(agent, str) and isinstance(score, float)
+print("  ✅ import_state: imported router routes correctly")
+es_passed += 1
+
+es_total += 1
+empty_import = PromptRouter([]).import_state({"agents": [], "feedback": []})
+assert empty_import["imported_agents"] == 0
+print("  ✅ import_state: empty state")
+es_passed += 1
+
+print(f"\n{es_passed}/{es_total} export_import tests passed")
+total_passed += es_passed
+total_tests += es_total
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")

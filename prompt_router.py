@@ -1320,6 +1320,166 @@ class PromptRouter:
             reset[a.name] = {"before": round(old, 4), "after": round(priority, 4)}
         return {"cleared_feedback": cleared, "reset_priorities": reset}
 
+    def detect_language(self, prompt: str) -> str:
+        """Detect the dominant language of a prompt.
+        Returns ISO 639-1 code: 'zh', 'en', 'ja', 'ko', etc.
+        Uses unicode range heuristics — zero dependencies.
+        """
+        if not prompt.strip():
+            return "unknown"
+        counts = {"zh": 0, "ja": 0, "ko": 0, "other": 0}
+        for ch in prompt:
+            cp = ord(ch)
+            if 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF:
+                counts["zh"] += 1
+            elif 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF:
+                counts["ja"] += 1
+            elif 0xAC00 <= cp <= 0xD7AF or 0x1100 <= cp <= 0x11FF:
+                counts["ko"] += 1
+            elif cp > 127:
+                counts["other"] += 1
+        total_cjk = counts["zh"] + counts["ja"] + counts["ko"] + counts["other"]
+        if total_cjk == 0:
+            return "en"
+        best = max(counts, key=counts.get)
+        return best if counts[best] > 0 else "en"
+
+    def route_by_language(self, prompt: str, lang_map: Optional[dict[str, list[str]]] = None) -> dict:
+        """Route a prompt preferring agents that match the detected language.
+        lang_map: optional mapping from language code to list of agent names.
+        Returns dict with 'language', 'agent', 'score', 'lang_candidates'.
+        """
+        lang = self.detect_language(prompt)
+        default_lang_map = {
+            "zh": ["translator", "writer"],
+            "ja": ["translator"],
+            "ko": ["translator"],
+        }
+        lmap = lang_map or default_lang_map
+        preferred = lmap.get(lang, [])
+        agent, score, all_scores = self.route(prompt)
+        # Boost preferred agents by 20%
+        boosted = []
+        for name, s in all_scores:
+            if name in preferred:
+                boosted.append((name, s * 1.2))
+            else:
+                boosted.append((name, s))
+        boosted.sort(key=lambda x: x[1], reverse=True)
+        final_agent = boosted[0][0] if boosted else agent
+        final_score = boosted[0][1] if boosted else score
+        return {
+            "language": lang,
+            "agent": final_agent,
+            "score": round(final_score, 4),
+            "lang_candidates": preferred if preferred else ["any"],
+            "all_scores": [(n, round(s, 4)) for n, s in boosted],
+        }
+
+    def route_by_complexity(self, prompt: str) -> dict:
+        """Estimate prompt complexity and route accordingly.
+        Complexity signals: length, multi-sentence, technical terms, nested clauses.
+        Returns dict with 'complexity' (low/medium/high), 'agent', 'score', 'signals'.
+        """
+        signals = {}
+        signals["word_count"] = len(prompt.split())
+        signals["sentence_count"] = len([s for s in re.split(r'[.!?。！？]', prompt) if s.strip()])
+        signals["has_code"] = bool(re.search(r'[<>{}()\[\]=;]', prompt))
+        signals["technical_terms"] = len(re.findall(r'\b(API|SDK|HTTP|database|algorithm|architecture|protocol|framework|infrastructure|microservice)\b', prompt, re.I))
+        signals["has_negation"] = bool(re.search(r"\b(not|don't|never|no|except|without|avoid)\b", prompt, re.I))
+
+        score = 0
+        score += min(signals["word_count"] / 20, 2)  # 0-2
+        score += min(signals["sentence_count"] / 3, 2)  # 0-2
+        score += 1 if signals["has_code"] else 0
+        score += min(signals["technical_terms"], 2)
+        score += 0.5 if signals["has_negation"] else 0
+
+        if score < 1.5:
+            complexity = "low"
+        elif score < 3.0:
+            complexity = "medium"
+        else:
+            complexity = "high"
+
+        agent, s, all_scores = self.route(prompt)
+        # High complexity boosts planner/architect types
+        if complexity == "high":
+            boosted = []
+            for name, sc in all_scores:
+                boost = 1.15 if name in ("planner", "reviewer") else 1.0
+                boosted.append((name, sc * boost))
+            boosted.sort(key=lambda x: x[1], reverse=True)
+            agent = boosted[0][0]
+            s = boosted[0][1]
+
+        return {
+            "complexity": complexity,
+            "complexity_score": round(score, 2),
+            "agent": agent,
+            "score": round(s, 4),
+            "signals": signals,
+        }
+
+    def agent_graph(self) -> dict:
+        """Build a similarity/connectivity graph between agents.
+        Returns dict with 'nodes' (agent names) and 'edges' (pairs with similarity score).
+        """
+        names = [a.name for a in self.agents]
+        nodes = names
+        edges = []
+        for i, a in enumerate(names):
+            for j, b in enumerate(names):
+                if i < j:
+                    sim = self.agent_similarity(a, b)
+                    edges.append({
+                        "from": a,
+                        "to": b,
+                        "similarity": round(sim.get("similarity", 0), 4),
+                        "shared_keywords": sim.get("shared_keywords", []),
+                    })
+        return {"nodes": nodes, "edges": edges}
+
+    def export_state(self) -> dict:
+        """Export full router state as JSON-serializable dict.
+        Includes agents, feedback history, and config.
+        """
+        agents_data = []
+        for a in self.agents:
+            agents_data.append({
+                "name": a.name,
+                "description": a.description,
+                "keywords": a.keywords,
+                "patterns": a.patterns,
+                "priority": a.priority,
+            })
+        feedback = getattr(self, '_feedback_history', [])
+        return {
+            "agents": agents_data,
+            "feedback": feedback,
+            "agent_count": len(agents_data),
+            "version": "1.0",
+        }
+
+    def import_state(self, data: dict) -> dict:
+        """Import router state from a dict (as produced by export_state).
+        Replaces current agents and feedback. Returns summary.
+        """
+        self.agents = []
+        for ad in data.get("agents", []):
+            self.agents.append(Agent(
+                name=ad["name"],
+                description=ad["description"],
+                keywords=ad.get("keywords", []),
+                patterns=ad.get("patterns", []),
+                priority=ad.get("priority", 1.0),
+            ))
+        self._feedback_history = data.get("feedback", [])
+        return {
+            "imported_agents": len(self.agents),
+            "imported_feedback": len(self._feedback_history),
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""
