@@ -23,3 +23,4 @@ timestamp	commit	metric	value	status	description
 2026-05-08T21:10	24eed4f	test_count	181→188	keep	route_by_sentiment(): sentiment/urgency-aware routing with 5 signal types, +7 tests
 2026-05-08T21:20	36dcd6a	test_count	188→194	keep	learning_stats() + reset_learning(): adaptive learning state management, +6 tests
 2026-05-09T13:11	f91c5c8	test_pass_rate	216/216=100%	keep	+22 tests: detect_language+route_by_language+route_by_complexity+agent_graph+export_state/import_state
+2026-05-10T19:10	ffeb7ef	test_count	225	keep	route_by_length(word-count routing with length_map) + prune_agents(remove no-keyword agents): +9 tests

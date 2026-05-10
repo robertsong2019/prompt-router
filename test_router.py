@@ -2085,4 +2085,53 @@ print(f"\n{pa_passed}/{pa_total} prune_agents tests passed")
 total_passed += pa_passed
 total_tests += pa_total
 
+# ============================================================
+# optimize_weights tests
+# ============================================================
+ow_passed = 0
+ow_total = 0
+
+ow_total += 1
+r = PromptRouter([DEFAULT_AGENTS[0], DEFAULT_AGENTS[1]])
+result = r.optimize_weights([])
+assert result["processed"] == 0
+assert result["adjustment_count"] == 0
+print("  ✅ optimize_weights: empty feedback")
+ow_passed += 1
+
+ow_total += 1
+result = r.optimize_weights([("debug code", DEFAULT_AGENTS[0].name, True)])
+assert result["processed"] == 1
+assert result["adjustment_count"] == 0  # correct, no adjustment needed
+print("  ✅ optimize_weights: correct routing no adjustment")
+ow_passed += 1
+
+ow_total += 1
+before_kw = len(r.agents[0].keywords)
+result = r.optimize_weights([("debug code", r.agents[0].name, False)])
+assert result["adjustment_count"] == 1
+assert result["agents_affected"] == [r.agents[0].name]
+print("  ✅ optimize_weights: misroute triggers adjustment")
+ow_passed += 1
+
+ow_total += 1
+result = r.optimize_weights([("test", "nonexistent-agent", False)])
+assert result["adjustment_count"] == 0
+print("  ✅ optimize_weights: unknown agent skipped")
+ow_passed += 1
+
+ow_total += 1
+result = r.optimize_weights([
+    ("debug code", r.agents[0].name, False),
+    ("analyze data", r.agents[1].name, False),
+])
+assert result["processed"] == 2
+assert result["adjustment_count"] == 2
+print("  ✅ optimize_weights: multiple feedback entries")
+ow_passed += 1
+
+print(f"\n{ow_passed}/{ow_total} optimize_weights tests passed")
+total_passed += ow_passed
+total_tests += ow_total
+
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")

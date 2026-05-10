@@ -1532,6 +1532,42 @@ class PromptRouter:
             "remaining": len(self.agents),
         }
 
+    def optimize_weights(self, feedback_log: list[tuple[str, str, bool]]) -> dict:
+        """Auto-tune agent keyword weights from historical feedback.
+        feedback_log: list of (prompt, correct_agent, was_correct) tuples.
+        For misrouted prompts, boosts correct agent's matching keywords and
+        reduces incorrect agent's matching keywords.
+        Returns summary of adjustments made.
+        """
+        adjustments = []
+        agent_map = {a.name: a for a in self.agents}
+
+        for prompt, correct, was_ok in feedback_log:
+            if correct not in agent_map:
+                continue
+            words = set(prompt.lower().split())
+            correct_agent = agent_map[correct]
+
+            if not was_ok:
+                # Boost correct agent keywords that match prompt words
+                boosted = []
+                for kw in correct_agent.keywords:
+                    if any(w in kw.lower() for w in words):
+                        boosted.append(kw)
+                if boosted:
+                    # Add missing keywords from prompt words
+                    for w in words:
+                        if len(w) > 3 and w not in correct_agent.keywords:
+                            correct_agent.keywords.append(w)
+                    adjustments.append({"correct": correct, "boosted_keywords": boosted})
+
+        return {
+            "processed": len(feedback_log),
+            "adjustments": adjustments,
+            "adjustment_count": len(adjustments),
+            "agents_affected": list(set(a["correct"] for a in adjustments)),
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""
