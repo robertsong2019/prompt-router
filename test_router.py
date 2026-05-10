@@ -1995,4 +1995,94 @@ es_passed += 1
 print(f"\n{es_passed}/{es_total} export_import tests passed")
 total_passed += es_passed
 total_tests += es_total
+
+# ============================================================
+# route_by_length tests
+# ============================================================
+rl_passed = 0
+rl_total = 0
+
+rl_total += 1
+r = PromptRouter()
+res = r.route_by_length("hi")
+assert res["word_count"] == 1
+assert res["category"] == "short"
+assert res["agent"] in [a.name for a in r.agents]
+print("  ✅ route_by_length: short prompt")
+rl_passed += 1
+
+rl_total += 1
+res = r.route_by_length("Write a function that sorts an array using merge sort and explain the time complexity step by step with examples for each phase of the algorithm")
+assert res["word_count"] > 20
+assert res["category"] == "long"
+assert res["agent"] in [a.name for a in r.agents]
+print("  ✅ route_by_length: long prompt")
+rl_passed += 1
+
+rl_total += 1
+res = r.route_by_length("Fix the bug in the code module today")
+assert res["category"] == "medium"
+print("  ✅ route_by_length: medium prompt")
+rl_passed += 1
+
+rl_total += 1
+# With length_map, prefer specific agents
+small_r = PromptRouter([DEFAULT_AGENTS[0], DEFAULT_AGENTS[1]])
+res = small_r.route_by_length("hi", length_map={"short": [DEFAULT_AGENTS[1].name], "medium": [], "long": []})
+assert res["agent"] == DEFAULT_AGENTS[1].name
+print("  ✅ route_by_length: length_map override")
+rl_passed += 1
+
+rl_total += 1
+# No matching agent in length_map falls back to best
+res = r.route_by_length("hi", length_map={"short": ["nonexistent-agent"]})
+assert res["agent"] in [a.name for a in r.agents]
+print("  ✅ route_by_length: nonexistent agent fallback")
+rl_passed += 1
+
+rl_total += 1
+# All scores present
+res = r.route_by_length("Write a test")
+assert len(res["all_scores"]) > 0
+print("  ✅ route_by_length: all_scores populated")
+rl_passed += 1
+
+print(f"\n{rl_passed}/{rl_total} route_by_length tests passed")
+total_passed += rl_passed
+total_tests += rl_total
+
+# ============================================================
+# prune_agents tests
+# ============================================================
+pa_passed = 0
+pa_total = 0
+
+pa_total += 1
+from prompt_router import Agent
+empty_agent = Agent(name="empty", description="no keywords", keywords=[])
+pr = PromptRouter([empty_agent, DEFAULT_AGENTS[0]])
+result = pr.prune_agents()
+assert result["removed"] == ["empty"]
+assert result["remaining"] == 1
+print("  ✅ prune_agents: removes agent with no keywords")
+pa_passed += 1
+
+pa_total += 1
+pr2 = PromptRouter(DEFAULT_AGENTS)
+result = pr2.prune_agents()
+assert result["removed_count"] == 0
+print("  ✅ prune_agents: keeps agents with keywords")
+pa_passed += 1
+
+pa_total += 1
+pr3 = PromptRouter([])
+result = pr3.prune_agents()
+assert result["removed_count"] == 0 and result["remaining"] == 0
+print("  ✅ prune_agents: empty router")
+pa_passed += 1
+
+print(f"\n{pa_passed}/{pa_total} prune_agents tests passed")
+total_passed += pa_passed
+total_tests += pa_total
+
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")

@@ -1480,6 +1480,58 @@ class PromptRouter:
             "imported_feedback": len(self._feedback_history),
         }
 
+    def route_by_length(self, prompt: str, length_map: Optional[dict[str, list[str]]] = None) -> dict:
+        """Route based on prompt length (word count).
+        length_map maps categories to agent name lists:
+          {"short": ["fast-agent"], "medium": [...], "long": ["deep-agent"]}
+        Default categories: short (<8), medium (8-20), long (>20).
+        Falls back to normal route() if no mapping or no matching agent found.
+        """
+        word_count = len(prompt.split())
+        if word_count < 8:
+            category = "short"
+        elif word_count <= 20:
+            category = "medium"
+        else:
+            category = "long"
+
+        agent, score, all_scores = self.route(prompt)
+
+        if length_map and category in length_map:
+            preferred = [n for n in length_map[category] if any(a.name == n for a in self.agents)]
+            if preferred:
+                preferred_scores = [(n, s) for n, s in all_scores if n in preferred]
+                if preferred_scores:
+                    agent = preferred_scores[0][0]
+                    score = preferred_scores[0][1]
+
+        return {
+            "word_count": word_count,
+            "category": category,
+            "agent": agent,
+            "score": round(score, 4),
+            "all_scores": [(n, round(s, 4)) for n, s in all_scores],
+        }
+
+    def prune_agents(self, min_score: float = 0.1) -> dict:
+        """Remove agents whose max possible score (sum of keyword weights) is below threshold.
+        Returns dict with removed agent names and count.
+        """
+        removed = []
+        kept = []
+        for agent in self.agents:
+            max_kw_weight = sum(len(kw.split()) for kw in agent.keywords)
+            if max_kw_weight < min_score and len(agent.keywords) == 0:
+                removed.append(agent.name)
+            else:
+                kept.append(agent)
+        self.agents = kept
+        return {
+            "removed": removed,
+            "removed_count": len(removed),
+            "remaining": len(self.agents),
+        }
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""
