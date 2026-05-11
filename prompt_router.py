@@ -1568,6 +1568,20 @@ class PromptRouter:
             "agents_affected": list(set(a["correct"] for a in adjustments)),
         }
 
+    def shuffle_agents(self) -> dict:
+        """Randomize agent order (useful for breaking ties)."""
+        import random
+        random.shuffle(self.agents)
+        return {"shuffled": len(self.agents)}
+
+    def reset_all_weights(self, weight: float = 1.0) -> dict:
+        """Reset all agent weights to a uniform value."""
+        count = 0
+        for a in self.agents:
+            a.weight = weight
+            count += 1
+        return {"reset": count, "weight": weight}
+
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""
         first = prompt.strip().split()[0].lower() if prompt.strip() else ""

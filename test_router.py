@@ -2135,3 +2135,45 @@ total_passed += ow_passed
 total_tests += ow_total
 
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# --- shuffle_agents + reset_all_weights ---
+sw_total = 0; sw_passed = 0
+
+sw_total += 1
+r = PromptRouter(DEFAULT_AGENTS[:3])
+names_before = [a.name for a in r.agents]
+result = r.shuffle_agents()
+assert result["shuffled"] == 3
+print("  ✅ shuffle_agents: shuffles order")
+sw_passed += 1
+
+sw_total += 1
+r2 = PromptRouter([])
+assert r2.shuffle_agents()["shuffled"] == 0
+print("  ✅ shuffle_agents: empty router ok")
+sw_passed += 1
+
+rw_total = 0; rw_passed = 0
+
+rw_total += 1
+r = PromptRouter(DEFAULT_AGENTS[:3])
+for a in r.agents:
+    a.weight = 2.5
+result = r.reset_all_weights(1.0)
+assert result["reset"] == 3
+assert all(a.weight == 1.0 for a in r.agents)
+print("  ✅ reset_all_weights: resets to uniform")
+rw_passed += 1
+
+rw_total += 1
+r2 = PromptRouter([])
+assert r2.reset_all_weights()["reset"] == 0
+print("  ✅ reset_all_weights: empty router ok")
+rw_passed += 1
+
+print(f"\n{sw_passed}/{sw_total} shuffle_agents tests passed")
+print(f"{rw_passed}/{rw_total} reset_all_weights tests passed")
+total_passed += sw_passed + rw_passed
+total_tests += sw_total + rw_total
+
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
