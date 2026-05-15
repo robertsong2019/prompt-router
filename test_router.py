@@ -2177,3 +2177,107 @@ total_passed += sw_passed + rw_passed
 total_tests += sw_total + rw_total
 
 print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")
+
+# ── Freeze/Unfreeze Tests ───────────────────────────────────────
+fr_passed = 0
+fr_total = 0
+
+# Test 1: freeze prevents add
+fr_total += 1
+r = PromptRouter([Agent("a", "Agent A", ["test"])])
+r.freeze()
+r.add_agent(Agent("b", "Agent B", ["foo"]))
+assert len(r.agents) == 1, "add_agent should be blocked when frozen"
+fr_passed += 1
+
+# Test 2: freeze prevents remove
+fr_total += 1
+r2 = PromptRouter([Agent("a", "Agent A", ["test"]), Agent("b", "Agent B", ["foo"])])
+r2.freeze()
+assert r2.remove_agent("a") is False
+assert len(r2.agents) == 2
+fr_passed += 1
+
+# Test 3: unfreeze allows add
+fr_total += 1
+r2.unfreeze()
+r2.add_agent(Agent("c", "Agent C", ["bar"]))
+assert len(r2.agents) == 3
+fr_passed += 1
+
+# Test 4: is_frozen
+fr_total += 1
+r3 = PromptRouter()
+assert r3.is_frozen() is False
+r3.freeze()
+assert r3.is_frozen() is True
+r3.unfreeze()
+assert r3.is_frozen() is False
+fr_passed += 1
+
+# Test 5: freeze returns stats
+fr_total += 1
+r4 = PromptRouter([Agent("x", "X", ["x"])])
+result = r4.freeze()
+assert result["frozen"] is True
+assert result["agents"] == 1
+fr_passed += 1
+
+print(f"\n{fr_passed}/{fr_total} freeze/unfreeze tests passed")
+total_passed += fr_passed
+total_tests += fr_total
+
+# ── Snapshot/Restore Tests ──────────────────────────────────────
+ss_passed = 0
+ss_total = 0
+
+# Test 1: snapshot captures agents
+ss_total += 1
+r = PromptRouter([Agent("a", "Agent A", ["test"])])
+r.agents[0].priority = 2.0
+snap = r.snapshot()
+assert len(snap['agents']) == 1
+assert snap['agents'][0]['name'] == 'a'
+assert snap['agents'][0]['priority'] == 2.0
+assert 'timestamp' in snap
+ss_passed += 1
+
+# Test 2: restore_snapshot replaces agents
+ss_total += 1
+r2 = PromptRouter([Agent("old", "Old", ["old"])])
+r2.restore_snapshot(snap)
+assert len(r2.agents) == 1
+assert r2.agents[0].name == 'a'
+ss_passed += 1
+
+# Test 3: restore returns stats
+ss_total += 1
+r3 = PromptRouter([Agent("x", "X", ["x"]), Agent("y", "Y", ["y"])])
+result = r3.restore_snapshot(snap)
+assert result['previous'] == 2
+assert result['restored'] == 1
+ss_passed += 1
+
+# Test 4: roundtrip preserves keywords
+ss_total += 1
+r4 = PromptRouter([Agent("k", "K", ["alpha", "beta"])])
+snap4 = r4.snapshot()
+r5 = PromptRouter()
+r5.restore_snapshot(snap4)
+assert r5.agents[0].keywords == ["alpha", "beta"]
+ss_passed += 1
+
+# Test 5: snapshot empty router
+ss_total += 1
+r6 = PromptRouter([])
+snap6 = r6.snapshot()
+assert snap6['agents'] == []
+r6.restore_snapshot(snap6)
+assert len(r6.agents) == 0
+ss_passed += 1
+
+print(f"\n{ss_passed}/{ss_total} snapshot/restore tests passed")
+total_passed += ss_passed
+total_tests += ss_total
+
+print(f"\n📊 Grand Total: {total_passed}/{total_tests} tests passed")

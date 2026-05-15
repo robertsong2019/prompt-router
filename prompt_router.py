@@ -269,13 +269,17 @@ class PromptRouter:
         return {"agent": None, "score": 0.0, "fallback_used": False, "chain": []}
 
     def add_agent(self, agent: Agent) -> None:
-        """Add a custom agent to the router. No-op if name already exists."""
+        """Add a custom agent to the router. No-op if frozen or name exists."""
+        if getattr(self, '_frozen', False):
+            return
         if any(a.name == agent.name for a in self.agents):
             return
         self.agents.append(agent)
 
     def remove_agent(self, name: str) -> bool:
-        """Remove an agent by name. Returns True if found and removed."""
+        """Remove an agent by name. Returns False if frozen or not found."""
+        if getattr(self, '_frozen', False):
+            return False
         for i, a in enumerate(self.agents):
             if a.name == name:
                 self.agents.pop(i)
@@ -1581,6 +1585,40 @@ class PromptRouter:
             a.weight = weight
             count += 1
         return {"reset": count, "weight": weight}
+
+    def freeze(self) -> dict:
+        """Lock agent list: prevents add/remove/route until unfreeze."""
+        self._frozen = True
+        return {"frozen": True, "agents": len(self.agents)}
+
+    def unfreeze(self) -> dict:
+        """Unlock agent list."""
+        self._frozen = False
+        return {"frozen": False, "agents": len(self.agents)}
+
+    def is_frozen(self) -> bool:
+        """Check if router is frozen."""
+        return getattr(self, '_frozen', False)
+
+    def snapshot(self) -> dict:
+        """Capture current state as dict (agents + their configs)."""
+        return {
+            'agents': [{'name': a.name, 'description': a.description,
+                        'keywords': list(a.keywords), 'priority': a.priority}
+                       for a in self.agents],
+            'timestamp': __import__('time').time(),
+        }
+
+    def restore_snapshot(self, snap: dict) -> dict:
+        """Restore from a snapshot dict. Returns stats."""
+        old_count = len(self.agents)
+        self.agents = [Agent(name=a['name'], description=a['description'],
+                             keywords=a['keywords'])
+                       for a in snap.get('agents', [])]
+        for agent, a in zip(self.agents, snap.get('agents', [])):
+            if 'priority' in a:
+                agent.priority = a['priority']
+        return {'restored': len(self.agents), 'previous': old_count}
 
     def _heuristic_fallback(self, prompt: str) -> str:
         """Last-resort routing based on simple heuristics."""

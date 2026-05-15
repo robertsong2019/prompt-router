@@ -25,3 +25,4 @@ timestamp	commit	metric	value	status	description
 2026-05-09T13:11	f91c5c8	test_pass_rate	216/216=100%	keep	+22 tests: detect_language+route_by_language+route_by_complexity+agent_graph+export_state/import_state
 2026-05-10T19:10	ffeb7ef	test_count	225	keep	route_by_length(word-count routing with length_map) + prune_agents(remove no-keyword agents): +9 tests
 2026-05-10T19:25	64c5dbe	test_count	230	keep	optimize_weights(feedback-based keyword tuning): +5 tests. Auto-boosts correct agent keywords on misroutes.
+2026-05-11T21:23:57+08:00	b7de3ee	test_count	234	keep	+4: shuffle_agents+reset_all_weights
